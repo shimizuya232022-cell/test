@@ -6,7 +6,7 @@ const CONFIG = {
   shopContact: "お問い合わせ：000-0000-0000",
   // Google Apps Script を「ウェブアプリ」として公開した後に発行される URL を貼り付けてください
   // 例: https://script.google.com/macros/s/xxxxxxxxxxxxxxxx/exec
-  gasEndpoint: "GAS_WEB_APP_URL_HERE",
+  gasEndpoint: "https://script.google.com/macros/s/AKfycbzqKF3FHfBLJhxLxItNJqxB7_AWzMWZTgqS63z5WSCej2biaxM4FoAc7Tkdyu0gtY-NpQ/exec",
   // 注文可能な最短日（0=当日可, 1=翌日以降のみ）
   minDaysAhead: 1,
 
