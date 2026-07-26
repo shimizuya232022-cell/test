@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>うなぎ処 ご注文フォーム</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+
+  <header class="header">
+    <h1 id="shopName">うなぎ処 ○○</h1>
+    <p class="tagline">Web注文フォーム</p>
+  </header>
+
+  <main>
+    <div id="editModeBanner" class="note edit-mode-banner hidden">
+      <p>この注文を編集しています。内容を確認して「変更を保存する」を押してください。</p>
+    </div>
+
+    <form id="orderForm" novalidate>
+
+      <!-- お客様情報 -->
+      <section class="card">
+        <h2>お客様情報</h2>
+
+        <div class="field">
+          <label for="customerName">お名前<span class="req">必須</span></label>
+          <input type="text" id="customerName" name="customerName" autocomplete="name" required>
+        </div>
+
+        <div class="field">
+          <label for="customerTel">電話番号<span class="req">必須</span></label>
+          <input type="tel" id="customerTel" name="customerTel" autocomplete="tel" placeholder="090-1234-5678" required>
+        </div>
+
+        <div class="field">
+          <label for="customerEmail">メールアドレス<span class="opt">任意（確認連絡用）</span></label>
+          <input type="email" id="customerEmail" name="customerEmail" autocomplete="email">
+        </div>
+      </section>
+
+      <!-- 受け取り方法 -->
+      <section class="card">
+        <h2>受け取り方法</h2>
+
+        <div class="field">
+          <div class="radio-group" id="deliveryTypeGroup">
+            <label class="radio-option">
+              <input type="radio" name="deliveryType" value="pickup" checked>
+              <span>店頭受け取り</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="deliveryType" value="shipping">
+              <span>配送</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field calendar-field">
+            <label for="desiredDateDisplay">ご希望日<span class="req">必須</span></label>
+            <button type="button" id="desiredDateDisplay" class="date-picker-btn placeholder">日付を選択してください</button>
+            <input type="hidden" id="desiredDate" name="desiredDate">
+
+            <div id="calendarPopup" class="calendar-popup hidden">
+              <div class="calendar-header">
+                <button type="button" id="calPrevMonth" class="calendar-nav-btn" aria-label="前の月">‹</button>
+                <span id="calMonthLabel" class="calendar-month-label"></span>
+                <button type="button" id="calNextMonth" class="calendar-nav-btn" aria-label="次の月">›</button>
+              </div>
+              <div class="calendar-weekdays">
+                <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+              </div>
+              <div id="calendarGrid" class="calendar-grid"></div>
+              <div class="calendar-legend">
+                <span class="legend-item"><span class="legend-swatch legend-swatch--closed"></span>選択できません</span>
+                <span class="legend-item"><span class="legend-swatch legend-swatch--special"></span>特別営業日</span>
+              </div>
+            </div>
+
+            <p class="hint error-hint hidden" id="dateAvailabilityError"></p>
+          </div>
+          <div class="field">
+            <label for="desiredTimePickupSlot">ご希望時間<span class="req">必須</span></label>
+            <select id="desiredTimePickupSlot" name="desiredTimePickupSlot">
+              <option value="">選択してください</option>
+            </select>
+            <select id="desiredTimeSlot" name="desiredTimeSlot" class="hidden">
+              <option value="">選択してください</option>
+            </select>
+            <p class="hint" id="pickupTimeHint">店頭受け取りは10:00〜17:45の間で30分刻みでお選びいただけます（営業時間 9:00〜18:00）。</p>
+            <p class="hint hidden" id="timeSlotHint">ヤマト運輸クール便の配達時間帯からお選びください。</p>
+          </div>
+        </div>
+        <p class="hint" id="dateHint">ご注文はご希望日の前日までにお願いいたします。</p>
+
+        <div id="shippingFields" class="hidden">
+          <div class="field">
+            <label for="zip">郵便番号<span class="req">必須</span></label>
+            <div class="zip-row">
+              <input type="text" id="zip" name="zip" placeholder="123-4567" autocomplete="postal-code" inputmode="numeric">
+              <button type="button" id="zipLookupBtn" class="zip-lookup-btn">住所を自動入力</button>
+            </div>
+            <p class="hint" id="zipHint"></p>
+          </div>
+          <div class="field">
+            <label for="address">ご住所<span class="req">必須</span></label>
+            <input type="text" id="address" name="address" placeholder="都道府県・市区町村・番地（郵便番号から自動入力できます）" autocomplete="address-line1">
+          </div>
+          <div class="field">
+            <label for="addressBuilding">建物名・部屋番号<span class="opt">任意</span></label>
+            <input type="text" id="addressBuilding" name="addressBuilding" autocomplete="address-line2">
+          </div>
+
+          <div class="field">
+            <label class="checkbox-option">
+              <input type="checkbox" id="invoiceDifferent" name="invoiceDifferent">
+              <span>請求書の送付先が配送先と異なる</span>
+            </label>
+          </div>
+
+          <div id="invoiceFields" class="hidden">
+            <p class="hint">お支払いは銀行振込のみとなります。ご請求書の送付先をご入力ください。</p>
+            <div class="field">
+              <label for="invoiceRecipientName">請求書送付先の宛名<span class="req">必須</span></label>
+              <input type="text" id="invoiceRecipientName" name="invoiceRecipientName" placeholder="会社名・部署名・ご担当者名など">
+            </div>
+            <div class="field">
+              <label for="invoiceZip">請求書送付先 郵便番号<span class="req">必須</span></label>
+              <div class="zip-row">
+                <input type="text" id="invoiceZip" name="invoiceZip" placeholder="123-4567" autocomplete="postal-code" inputmode="numeric">
+                <button type="button" id="invoiceZipLookupBtn" class="zip-lookup-btn">住所を自動入力</button>
+              </div>
+              <p class="hint" id="invoiceZipHint"></p>
+            </div>
+            <div class="field">
+              <label for="invoiceAddress">請求書送付先 ご住所<span class="req">必須</span></label>
+              <input type="text" id="invoiceAddress" name="invoiceAddress" placeholder="都道府県・市区町村・番地（郵便番号から自動入力できます）">
+            </div>
+            <div class="field">
+              <label for="invoiceAddressBuilding">建物名・部屋番号<span class="opt">任意</span></label>
+              <input type="text" id="invoiceAddressBuilding" name="invoiceAddressBuilding">
+            </div>
+          </div>
+        </div>
+
+        <div id="pickupNote" class="note">
+          <p>店頭受け取りの場合は、当店にてお受け取りをお願いいたします。</p>
+        </div>
+      </section>
+
+      <!-- ご注文商品 -->
+      <section class="card">
+        <h2>ご注文商品</h2>
+        <p class="hint">※受け取り方法によって選べる商品が異なります。</p>
+        <div id="productList" class="product-list"></div>
+        <div class="subtotal-row" id="shippingFeeRow">
+          <span>送料</span>
+          <span id="shippingFeeAmount">¥0</span>
+        </div>
+        <div class="total-row">
+          <span>合計（税込）</span>
+          <span id="totalPrice">¥0</span>
+        </div>
+        <p class="hint" id="paymentHint">お支払いは店頭にて現金にてお願いいたします。</p>
+      </section>
+
+      <!-- 備考 -->
+      <section class="card">
+        <h2>備考</h2>
+        <div class="field">
+          <label for="notes">ご要望・アレルギー等<span class="opt">任意</span></label>
+          <textarea id="notes" name="notes" rows="3" placeholder="例：山椒多めでお願いします"></textarea>
+        </div>
+      </section>
+
+      <div id="formError" class="form-error hidden"></div>
+
+      <button type="submit" id="submitBtn" class="submit-btn">この内容で注文する</button>
+    </form>
+
+    <div id="successMessage" class="success-message hidden">
+      <h2 id="successTitle">ご注文を承りました</h2>
+      <p id="successBody">ご注文ありがとうございます。内容を確認の上、店舗より確認のご連絡をさせていただく場合がございます。</p>
+      <button id="newOrderBtn" class="submit-btn">もう一度注文する</button>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <p id="shopContact">お問い合わせ：000-0000-0000</p>
+  </footer>
+
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
