@@ -38,9 +38,10 @@ const CONFIG = {
   pickupTimeStepMinutes: 30,
 
   // うなぎ商品（人前選択商品）の、日ごとの人前数上限（管理画面「うなぎ管理」タブで編集、店頭受け取り・配送で共有）。
-  // GASから取得できた場合はこちらの初期値は無視されます。unagiDailyCapacity[日付（仕込み日）][商品ID] = 上限人前数
+  // 蒲焼・白焼きは同じ等級として合算し、真空パックは対象外。
+  // GASから取得できた場合はこちらの初期値は無視されます。unagiDailyCapacity[日付（仕込み日）][等級("nami"|"tokujo")] = 上限人前数
   unagiDailyCapacity: {
-    // "2026-08-05": { "p17851553987067": 20 },
+    // "2026-08-05": { "nami": 20 },
   },
 
   // クール便のお届け希望時間の選択肢（管理画面「クール便」タブで編集）
@@ -146,13 +147,27 @@ function makeLineId() {
   return "l" + Date.now() + Math.floor(Math.random() * 1000);
 }
 
-// 指定商品・仕込み日（店頭受け取りはその受け取り日、配送は出荷日）の有効な上限人前数を返す。上限がなければ null。
-function getUnagiDailyLimit(productId, prepDateStr) {
+// 指定等級・仕込み日（店頭受け取りはその受け取り日、配送は出荷日）の有効な上限人前数を返す。上限がなければ null。
+// 蒲焼・白焼きは同じ等級として合算し、真空パック（namiVac/tokujoVac）は上限対象外。
+function getUnagiDailyLimit(grade, prepDateStr) {
   const byDate = CONFIG.unagiDailyCapacity[prepDateStr];
-  if (byDate && Object.prototype.hasOwnProperty.call(byDate, productId)) {
-    return byDate[productId];
+  if (byDate && Object.prototype.hasOwnProperty.call(byDate, grade)) {
+    return byDate[grade];
   }
   return null;
+}
+
+// 指定等級について、現在かごに入っている（まだ送信していない）全商品の人前数合計を返す
+// （蒲焼・白焼きなど同じ等級の商品をまたいで合算するため）
+function getUsedServingsForGrade(grade) {
+  let used = 0;
+  PRODUCTS.filter(isServingBased).forEach((p) => {
+    if (getProductGrade(p) !== grade) return;
+    (servingLines[p.id] || []).forEach((line) => {
+      used += line.servings * line.count;
+    });
+  });
+  return used;
 }
 
 const productListEl = document.getElementById("productList");
@@ -643,7 +658,7 @@ function getCartEntries() {
           productId: p.id,
           lineId: line.id,
           kind: "serving",
-          label: `${p.name}（${line.servings}人前${line.count > 1 ? ` × ${line.count}個` : ""}）`,
+          label: `${p.name}（${line.servings * line.count}人前）`,
           subLabel: subParts.join("・"),
           amount: p.price * line.servings * line.count + boxFeeTotal,
         });
@@ -885,10 +900,13 @@ function removeRegularLine(productId, lineId) {
   updateTotal();
 }
 
-// stockRemaining[productId] の意味: undefined = 未取得（日付未選択等）, null = この日は上限なし, 数値 = 残り人前数
+// stockRemaining[grade] の意味: undefined = 未取得（日付未選択等）, null = この日は上限なし, 数値 = 残り人前数
+// （蒲焼・白焼きは同じ等級として合算。真空パックの等級は常に未設定＝無制限として扱われる）
 // 人前選択商品の「追加」ボタン・選択肢・個数ステッパーを、残数（人前×個数の合計）に応じて無効化する
 function updateServingControlForCap(productId) {
-  const remaining = stockRemaining[productId];
+  const product = findProduct(productId);
+  const grade = getProductGrade(product);
+  const remaining = stockRemaining[grade];
   const selectEl = document.getElementById(`serving-select-${productId}`);
   const addBtn = document.getElementById(`serving-add-${productId}`);
   const incBtn = document.querySelector(`.serving-count-btn[data-action="increase"][data-id="${productId}"]`);
@@ -901,7 +919,7 @@ function updateServingControlForCap(productId) {
     return;
   }
 
-  const usedSoFar = (servingLines[productId] || []).reduce((sum, line) => sum + line.servings * line.count, 0);
+  const usedSoFar = getUsedServingsForGrade(grade);
   const remainingForNewLine = Math.max(0, remaining - usedSoFar);
 
   Array.from(selectEl.options).forEach((opt) => {
@@ -922,7 +940,15 @@ function renderStockBadges() {
     const badgeEl = document.getElementById(`stock-${productId}`);
     if (!badgeEl) return; // 現在の商品リストに表示されていない
 
-    const remaining = stockRemaining[productId];
+    const grade = getProductGrade(product);
+    if (grade === "namiVac" || grade === "tokujoVac") {
+      badgeEl.textContent = "真空パックは日ごとの人前数上限の対象外です";
+      badgeEl.classList.remove("stock-badge--full");
+      updateServingControlForCap(productId);
+      return;
+    }
+
+    const remaining = stockRemaining[grade];
     const deliveryType = getDeliveryType();
     const unselectedHint = deliveryType === "pickup" ? "受け取り日を選択すると残り人前数を表示します" : "発送日を選択すると残り人前数を表示します";
     if (remaining === undefined) {
@@ -932,10 +958,10 @@ function renderStockBadges() {
       badgeEl.textContent = "この日は上限なし";
       badgeEl.classList.remove("stock-badge--full");
     } else if (remaining <= 0) {
-      badgeEl.textContent = "この日は満数のため受付できません";
+      badgeEl.textContent = "この日は満数のため受付できません（蒲焼・白焼き合算）";
       badgeEl.classList.add("stock-badge--full");
     } else {
-      badgeEl.textContent = `この日の残り：${remaining}人前`;
+      badgeEl.textContent = `この日の残り：${remaining}人前（蒲焼・白焼き合算）`;
       badgeEl.classList.remove("stock-badge--full");
     }
 
@@ -969,11 +995,14 @@ function handleServingSelectChange(e) {
 function changeServingPendingCount(productId, delta) {
   let next = (servingPendingCount[productId] || 1) + delta;
 
-  if (delta > 0 && typeof stockRemaining[productId] === "number") {
+  const product = findProduct(productId);
+  const grade = getProductGrade(product);
+
+  if (delta > 0 && typeof stockRemaining[grade] === "number") {
     const selectEl = document.getElementById(`serving-select-${productId}`);
     const servings = selectEl ? Number(selectEl.value) || 1 : 1;
-    const usedSoFar = (servingLines[productId] || []).reduce((sum, line) => sum + line.servings * line.count, 0);
-    const remainingForNewLine = Math.max(0, stockRemaining[productId] - usedSoFar);
+    const usedSoFar = getUsedServingsForGrade(grade);
+    const remainingForNewLine = Math.max(0, stockRemaining[grade] - usedSoFar);
     const maxCount = servings > 0 ? Math.floor(remainingForNewLine / servings) : 0;
     if (next > maxCount) next = maxCount;
   }
@@ -991,9 +1020,12 @@ function addServingLine(productId) {
   const count = servingPendingCount[productId] || 1;
   if (!servings || !count) return;
 
-  if (typeof stockRemaining[productId] === "number") {
-    const usedSoFar = (servingLines[productId] || []).reduce((sum, line) => sum + line.servings * line.count, 0);
-    if (usedSoFar + servings * count > stockRemaining[productId]) return; // 残り数を超えて追加できない
+  const product = findProduct(productId);
+  const grade = getProductGrade(product);
+
+  if (typeof stockRemaining[grade] === "number") {
+    const usedSoFar = getUsedServingsForGrade(grade);
+    if (usedSoFar + servings * count > stockRemaining[grade]) return; // 残り数を超えて追加できない
   }
 
   let purpose = null;
@@ -1004,8 +1036,7 @@ function addServingLine(productId) {
 
   const boxCheckEl = document.getElementById(`serving-box-${productId}`);
   const wantsBox = !!(boxCheckEl && boxCheckEl.checked && !boxCheckEl.disabled);
-  const product = findProduct(productId);
-  const box = wantsBox ? findAutoBoxForServings(servings, getProductGrade(product)) : null;
+  const box = wantsBox ? findAutoBoxForServings(servings, grade) : null;
 
   if (!servingLines[productId]) servingLines[productId] = [];
   servingLines[productId].push({ id: makeLineId(), servings, count, purpose, box });
@@ -1026,11 +1057,11 @@ function removeServingLine(productId, lineId) {
   updateTotal();
 }
 
-// うなぎ商品（人前選択商品）の日別残数を取得する。
+// うなぎ商品（人前選択商品）の日別残数を等級（並・特上）ごとに取得する。蒲焼・白焼きは合算、真空パックは対象外。
 // 店頭受け取り・配送で在庫を共有するため、仕込み日（店頭受け取りはその受け取り日、配送は出荷日＝希望日の前日）を基準に問い合わせる。
 async function fetchStockAvailability() {
-  const unagiIds = PRODUCTS.filter(isServingBased).map((p) => p.id);
-  if (unagiIds.length === 0) return;
+  const grades = ["nami", "tokujo"]; // 真空パックの等級は上限対象外のため含めない
+  if (!PRODUCTS.some(isServingBased)) return;
 
   const date = desiredDateInput.value;
   if (!date) {
@@ -1043,8 +1074,8 @@ async function fetchStockAvailability() {
 
   if (!CONFIG.gasEndpoint || CONFIG.gasEndpoint === "GAS_WEB_APP_URL_HERE") {
     stockRemaining = {};
-    unagiIds.forEach((id) => {
-      stockRemaining[id] = getUnagiDailyLimit(id, prepDate);
+    grades.forEach((grade) => {
+      stockRemaining[grade] = getUnagiDailyLimit(grade, prepDate);
     });
     renderStockBadges();
     return;
@@ -1055,11 +1086,11 @@ async function fetchStockAvailability() {
     if (editingOrderId) url += `&excludeOrderId=${encodeURIComponent(editingOrderId)}`;
     const res = await fetch(url);
     const data = await res.json();
-    const ordered = (data && data.ordered) || {};
+    const ordered = (data && data.ordered) || {}; // 等級 -> 合計人前数
     stockRemaining = {};
-    unagiIds.forEach((id) => {
-      const limit = getUnagiDailyLimit(id, prepDate);
-      stockRemaining[id] = limit === null ? null : Math.max(0, limit - (ordered[id] || 0));
+    grades.forEach((grade) => {
+      const limit = getUnagiDailyLimit(grade, prepDate);
+      stockRemaining[grade] = limit === null ? null : Math.max(0, limit - (ordered[grade] || 0));
     });
   } catch (err) {
     // 取得に失敗した場合はクライアント側の上限表示のみスキップ（送信時はGAS側で最終チェックされる）
@@ -1343,9 +1374,9 @@ function buildPayload() {
       (servingLines[p.id] || []).forEach((line) => {
         const purpose = deliveryType === "pickup" ? (line.purpose === "gift" ? "お土産用" : "自宅用") : null;
         const boxFeeTotal = line.box ? line.box.price * line.count : 0;
-        // name に「〇人前 × 〇個」「折箱サイズ」を明記して伝票上でも内訳が分かるようにする。
+        // name には合計人前数・折箱サイズを明記して伝票上でも内訳が分かるようにする（末尾の x◯は formatItems 側で付与される数量と同じ合計人前数）。
         // servings/packCount/boxId等は編集画面での復元用の付加情報（GAS側の在庫集計等はquantityのみ参照）。
-        let name = line.count > 1 ? `${p.name}（${line.servings}人前 × ${line.count}個）` : `${p.name}（${line.servings}人前）`;
+        let name = `${p.name}（${line.servings * line.count}人前）`;
         if (line.box) name += `（折箱:${line.box.name}）`;
         items.push({
           productId: p.id,
