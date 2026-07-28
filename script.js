@@ -2,11 +2,11 @@
 // 設定：お店の情報や商品はここを編集してください
 // ============================================================
 const CONFIG = {
-  shopName: "うなぎ処 ○○",
-  shopContact: "お問い合わせ：000-0000-0000",
+  shopName: "丸共　清水屋川魚店",
+  shopContact: "お問い合わせ：0120-174-338",
   // Google Apps Script を「ウェブアプリ」として公開した後に発行される URL を貼り付けてください
   // 例: https://script.google.com/macros/s/xxxxxxxxxxxxxxxx/exec
-  gasEndpoint: "GAS_WEB_APP_URL_HERE",
+  gasEndpoint: "https://script.google.com/macros/s/AKfycbzqKF3FHfBLJhxLxItNJqxB7_AWzMWZTgqS63z5WSCej2biaxM4FoAc7Tkdyu0gtY-NpQ/exec",
   // 注文可能な最短日（0=当日可, 1=翌日以降のみ）
   minDaysAhead: 1,
 
@@ -22,7 +22,7 @@ const CONFIG = {
   pickupClosedWeekdays: [3],
   // 臨時休業の個別の日付（"YYYY-MM-DD"）。店頭受け取りはその日自体が不可、配送はその翌日の着荷が不可になります
   pickupUnavailableDates: [
-    // "2026-08-13", "2026-08-14", "2026-08-15",
+    "2026-07-28",
   ],
 
   // 店頭受け取りの時間帯（営業時間 9:00〜18:00、受け取りは10:00〜17:45の間で30分刻み）
@@ -33,7 +33,7 @@ const CONFIG = {
   // うなぎ商品（人前選択商品）の、日ごとの人前数上限（管理画面「うなぎ管理」タブで編集、店頭受け取り・配送で共有）。
   // GASから取得できた場合はこちらの初期値は無視されます。unagiDailyCapacity[日付（仕込み日）][商品ID] = 上限人前数
   unagiDailyCapacity: {
-    // "2026-08-05": { "kabayaki-nami": 20 },
+    // "2026-08-05": { "p17851553987067": 20 },
   },
 
   // クール便のお届け希望時間の選択肢（管理画面「クール便」タブで編集）
@@ -51,25 +51,25 @@ const CONFIG = {
 // ※ GAS管理画面「商品」タブで商品を管理している場合、起動時にそちらの内容へ丸ごと差し替わります。
 //   この配列はGASに接続できない場合のフォールバック（例示）です。
 let PRODUCTS = [
-  // 人前選択商品の例（価格は1人前あたり。maxServingsは管理画面「うなぎ管理」タブでも変更できます）
+  // 「〇人前」選択商品（価格は1人前あたり）
   // 等級（並/特上/真空並/真空特上）は商品名から自動判定します（getProductGrade参照）。管理画面では変更できません
-  { id: "kabayaki-nami", name: "うなぎ蒲焼（並）", price: 1800, availableFor: ["pickup", "shipping"], maxServings: 5 },
-  { id: "kabayaki-tokujo", name: "うなぎ蒲焼（特上）", price: 2500, availableFor: ["pickup", "shipping"], maxServings: 5 },
-  { id: "kabayaki-nami-vac", name: "うなぎ蒲焼（並）真空パック", price: 1900, availableFor: ["pickup", "shipping"], maxServings: 5 },
-  { id: "kabayaki-tokujo-vac", name: "うなぎ蒲焼（特上）真空パック", price: 2600, availableFor: ["pickup", "shipping"], maxServings: 5 },
-  { id: "shirayaki-nami", name: "うなぎ白焼き（並）", price: 2000, availableFor: ["pickup", "shipping"], maxServings: 5 },
-  { id: "shirayaki-tokujo", name: "うなぎ白焼き（特上）", price: 2700, availableFor: ["pickup", "shipping"], maxServings: 5 },
-  { id: "shirayaki-nami-vac", name: "うなぎ白焼き（並）真空パック", price: 2100, availableFor: ["pickup", "shipping"], maxServings: 5 },
-  { id: "shirayaki-tokujo-vac", name: "うなぎ白焼き（特上）真空パック", price: 2800, availableFor: ["pickup", "shipping"], maxServings: 5 },
-  { id: "tokujo", name: "特上うな重", price: 4500, availableFor: ["pickup"] },
-  { id: "jo", name: "上うな重", price: 3800, availableFor: ["pickup"] },
-  { id: "nami", name: "並うな重", price: 3200, availableFor: ["pickup"] },
-  { id: "unadon", name: "うな丼", price: 2200, availableFor: ["pickup"] },
-  { id: "kimosui", name: "きも吸い", price: 300, availableFor: ["pickup"] },
-  { id: "shirayaki", name: "白焼き", price: 2500, availableFor: ["pickup", "shipping"] },
-  { id: "kabayaki1", name: "うなぎ蒲焼（1尾）", price: 3000, availableFor: ["pickup", "shipping"] },
-  { id: "kabayaki2", name: "うなぎ蒲焼（2尾）", price: 5800, availableFor: ["pickup", "shipping"] },
-  { id: "giftset", name: "うなぎ蒲焼 化粧箱ギフトセット（3尾）", price: 8500, availableFor: ["shipping"] },
+  { id: "p17851553987067", name: "うなぎ蒲焼(並)", price: 2000, availableFor: ["pickup", "shipping"], maxServings: 6 },
+  { id: "p1785155451439806", name: "うなぎ蒲焼(特上)", price: 2700, availableFor: ["pickup", "shipping"], maxServings: 4 },
+  { id: "p1785155489646581", name: "うなぎ白焼き(並)", price: 1900, availableFor: ["pickup", "shipping"], maxServings: 6 },
+  { id: "p1785155523456183", name: "うなぎ白焼き(特上)", price: 2600, availableFor: ["pickup", "shipping"], maxServings: 4 },
+  { id: "p1785155560863159", name: "うなぎ蒲焼(並)真空パック", price: 2020, availableFor: ["pickup", "shipping"], maxServings: 5 },
+  { id: "p1785155699915863", name: "うなぎ蒲焼(特上)真空パック", price: 2720, availableFor: ["pickup", "shipping"], maxServings: 4 },
+  { id: "p1785155734555807", name: "うなぎ白焼き(並)真空パック", price: 1920, availableFor: ["pickup", "shipping"], maxServings: 5 },
+  { id: "p1785155784538956", name: "うなぎ白焼き(特上)真空パック", price: 2620, availableFor: ["pickup", "shipping"], maxServings: 4 },
+  // 通常の数量選択商品
+  { id: "p1", name: "肝焼き", price: 1100, availableFor: ["pickup", "shipping"] },
+  { id: "p2", name: "肝焼き(ハーフ)", price: 600, availableFor: ["pickup", "shipping"] },
+  { id: "p1785156001465926", name: "わかさぎ唐揚げ(タレ)", price: 1100, availableFor: ["pickup", "shipping"] },
+  { id: "p1785156199020779", name: "わかさぎ唐揚げ(タレ)(ハーフ)", price: 550, availableFor: ["pickup", "shipping"] },
+  { id: "p1785156245865697", name: "わかさぎ唐揚げ(塩)", price: 1100, availableFor: ["pickup", "shipping"] },
+  { id: "p1785156380961901", name: "わかさぎ唐揚げ(塩)(ハーフ)", price: 550, availableFor: ["pickup", "shipping"] },
+  { id: "p1785156413497579", name: "わかさぎ唐揚げ(カレー)(ハーフ)", price: 550, availableFor: ["pickup", "shipping"] },
+  { id: "p1785156431134227", name: "わかさぎ唐揚げ(ピリ辛)(ハーフ)", price: 550, availableFor: ["pickup", "shipping"] },
 ];
 
 // 都道府県 → 地方区分
