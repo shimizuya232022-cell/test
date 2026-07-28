@@ -19,6 +19,7 @@
       <p>この注文を編集しています。内容を確認して「変更を保存する」を押してください。</p>
     </div>
 
+    <div class="layout">
     <form id="orderForm" novalidate>
 
       <!-- お客様情報 -->
@@ -154,16 +155,8 @@
       <!-- ご注文商品 -->
       <section class="card">
         <h2>ご注文商品</h2>
-        <p class="hint">※受け取り方法によって選べる商品が異なります。</p>
+        <p class="hint">※受け取り方法によって選べる商品が異なります。数量・人前数を選んで「追加」を押すと、右側（スマホでは画面下部）の「買い物かご」に追加されます。</p>
         <div id="productList" class="product-list"></div>
-        <div class="subtotal-row" id="shippingFeeRow">
-          <span>送料</span>
-          <span id="shippingFeeAmount">¥0</span>
-        </div>
-        <div class="total-row">
-          <span>合計（税込）</span>
-          <span id="totalPrice">¥0</span>
-        </div>
         <p class="hint" id="paymentHint">お支払いは店頭にて現金にてお願いいたします。</p>
       </section>
 
@@ -180,6 +173,32 @@
 
       <button type="submit" id="submitBtn" class="submit-btn">この内容で注文する</button>
     </form>
+
+    <aside id="cartPanel" class="cart-panel">
+      <button type="button" id="cartSummaryBar" class="cart-summary-bar">
+        <span class="cart-summary-icon">🛒</span>
+        <span id="cartSummaryCount" class="cart-summary-count">0点</span>
+        <span id="cartSummaryTotal" class="cart-summary-total">¥0</span>
+        <span class="cart-summary-toggle-icon">▲</span>
+      </button>
+      <div class="cart-panel-body">
+        <h2 class="cart-panel-title">買い物かご</h2>
+        <div id="cartItemsList" class="cart-items-list">
+          <p class="cart-empty-hint">まだ商品が追加されていません。</p>
+        </div>
+        <div class="cart-panel-footer">
+          <div class="subtotal-row" id="shippingFeeRow">
+            <span>送料</span>
+            <span id="shippingFeeAmount">¥0</span>
+          </div>
+          <div class="total-row">
+            <span>合計（税込）</span>
+            <span id="totalPrice">¥0</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+    </div>
 
     <div id="successMessage" class="success-message hidden">
       <h2 id="successTitle">ご注文を承りました</h2>

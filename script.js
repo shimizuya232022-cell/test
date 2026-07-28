@@ -25,6 +25,13 @@ const CONFIG = {
     "2026-07-28",
   ],
 
+  // --- 発送不可日（配送のみ） ---
+  // 店舗は営業しているが配送業者の都合等で発送作業だけできない個別の日付（"YYYY-MM-DD"）。
+  // この日の翌日が着日として選択できなくなります（店頭受け取りには影響しません）
+  shippingNoDispatchDates: [
+    // "2026-08-13",
+  ],
+
   // 店頭受け取りの時間帯（営業時間 9:00〜18:00、受け取りは10:00〜17:45の間で30分刻み）
   pickupTimeStart: "10:00",
   pickupTimeEnd: "17:45",
@@ -87,24 +94,29 @@ const PREFECTURE_REGION = {
 
 // ============================================================
 
-// 店頭受け取り: home(自宅用) / gift(お土産用) を別々に集計。配送: ship のみ使用。
-let quantities = {};
-// 人前選択商品（maxServings設定あり）の追加済みライン一覧。商品ID: [{ id, servings, count, purpose }]
+// 人前選択商品（maxServings設定あり）の追加済みライン一覧。商品ID: [{ id, servings, count, purpose, box }]
 // servings=〇人前、count=その〇人前パックの個数。purpose は店頭受け取りのみ "home"/"gift"、配送時は null。
 let servingLines = {};
 // 人前選択商品で「追加」ボタンを押す前の、個数ステッパーの一時的な選択値（商品ID: 個数）
 let servingPendingCount = {};
-function initQuantities() {
-  quantities = {};
+// 通常の数量選択商品の追加済みライン一覧。商品ID: [{ id, quantity, purpose }]
+// purpose は店頭受け取りのみ "home"/"gift"、配送時は null。
+let regularLines = {};
+// 通常の数量選択商品で「追加」ボタンを押す前の、数量ステッパーの一時的な選択値（商品ID: 数量）
+let regularPendingCount = {};
+function initCartState() {
   servingLines = {};
   servingPendingCount = {};
+  regularLines = {};
+  regularPendingCount = {};
   PRODUCTS.forEach((p) => {
-    quantities[p.id] = { home: 0, gift: 0, ship: 0 };
     servingLines[p.id] = [];
     servingPendingCount[p.id] = 1;
+    regularLines[p.id] = [];
+    regularPendingCount[p.id] = 1;
   });
 }
-initQuantities();
+initCartState();
 
 // 選択中の受け取り日時における、上限商品の残数（商品ID: 残数）。未取得の商品は含まれない。
 let stockRemaining = {};
@@ -130,8 +142,8 @@ function getProductGrade(product) {
   return "nami";
 }
 
-function makeServingLineId() {
-  return "sl" + Date.now() + Math.floor(Math.random() * 1000);
+function makeLineId() {
+  return "l" + Date.now() + Math.floor(Math.random() * 1000);
 }
 
 // 指定商品・仕込み日（店頭受け取りはその受け取り日、配送は出荷日）の有効な上限人前数を返す。上限がなければ null。
@@ -145,6 +157,11 @@ function getUnagiDailyLimit(productId, prepDateStr) {
 
 const productListEl = document.getElementById("productList");
 const totalPriceEl = document.getElementById("totalPrice");
+const cartPanelEl = document.getElementById("cartPanel");
+const cartSummaryBarEl = document.getElementById("cartSummaryBar");
+const cartSummaryCountEl = document.getElementById("cartSummaryCount");
+const cartSummaryTotalEl = document.getElementById("cartSummaryTotal");
+const cartItemsListEl = document.getElementById("cartItemsList");
 const form = document.getElementById("orderForm");
 const formErrorEl = document.getElementById("formError");
 const submitBtn = document.getElementById("submitBtn");
@@ -215,6 +232,7 @@ async function fetchRemoteSettings() {
     if (Array.isArray(s.pickupClosedWeekdays)) CONFIG.pickupClosedWeekdays = s.pickupClosedWeekdays;
     if (Array.isArray(s.pickupUnavailableDates)) CONFIG.pickupUnavailableDates = s.pickupUnavailableDates;
     if (Array.isArray(s.specialOpenDates)) CONFIG.specialOpenDates = s.specialOpenDates;
+    if (Array.isArray(s.shippingNoDispatchDates)) CONFIG.shippingNoDispatchDates = s.shippingNoDispatchDates;
     if (s.unagiDailyCapacity && typeof s.unagiDailyCapacity === "object") {
       CONFIG.unagiDailyCapacity = s.unagiDailyCapacity;
     }
@@ -337,12 +355,12 @@ function applyOrderToForm(order) {
       const count = item.packCount || 1;
       const box = item.boxId ? { id: item.boxId, name: item.boxName || "", price: item.boxPrice || 0 } : null;
       if (!servingLines[item.productId]) servingLines[item.productId] = [];
-      servingLines[item.productId].push({ id: makeServingLineId(), servings, count, purpose, box });
+      servingLines[item.productId].push({ id: makeLineId(), servings, count, purpose, box });
       return;
     }
-    if (!quantities[item.productId]) return;
-    const key = item.purpose === "自宅用" ? "home" : item.purpose === "お土産用" ? "gift" : "ship";
-    quantities[item.productId][key] += item.quantity;
+    const purpose = item.purpose === "自宅用" ? "home" : item.purpose === "お土産用" ? "gift" : null;
+    if (!regularLines[item.productId]) regularLines[item.productId] = [];
+    regularLines[item.productId].push({ id: makeLineId(), quantity: item.quantity, purpose });
   });
   renderProducts(order.deliveryType);
 
@@ -388,12 +406,16 @@ async function init() {
   await fetchRemoteSettings();
   await fetchRemoteProducts();
   await fetchRemoteBoxTypes();
-  initQuantities();
+  initCartState();
   renderProducts(getDeliveryType());
   setupDeliveryTypeToggle();
-  productListEl.addEventListener("click", handleQtyClick);
+  productListEl.addEventListener("click", handleRegularLineClick);
   productListEl.addEventListener("click", handleServingLineClick);
   productListEl.addEventListener("change", handleServingSelectChange);
+  cartItemsListEl.addEventListener("click", handleCartLineClick);
+  cartSummaryBarEl.addEventListener("click", () => {
+    cartPanelEl.classList.toggle("cart-panel--expanded");
+  });
   form.addEventListener("submit", handleSubmit);
   document.getElementById("newOrderBtn").addEventListener("click", resetForm);
   setupZipLookup();
@@ -547,6 +569,8 @@ function isDateAvailable(dateStr, deliveryType) {
   const isSpecialOpen = CONFIG.specialOpenDates.includes(targetDate);
   if (!isSpecialOpen && CONFIG.pickupClosedWeekdays.includes(weekday)) return false;
   if (CONFIG.pickupUnavailableDates.includes(targetDate)) return false;
+  // 発送不可日（配送のみ・特別営業日での上書き不可）
+  if (deliveryType === "shipping" && CONFIG.shippingNoDispatchDates.includes(targetDate)) return false;
   return true;
 }
 
@@ -577,7 +601,10 @@ function updateDateHint() {
   const blockedWeekdayLabel = [...new Set(CONFIG.pickupClosedWeekdays.map((d) => (d + 1) % 7))]
     .map((d) => `${weekdayNames[d]}曜日`)
     .join("・");
-  const blockedDates = CONFIG.pickupUnavailableDates.map((d) => addDays(d, 1));
+  const blockedDates = [
+    ...CONFIG.pickupUnavailableDates.map((d) => addDays(d, 1)),
+    ...CONFIG.shippingNoDispatchDates.map((d) => addDays(d, 1)),
+  ];
   if (blockedWeekdayLabel) msg += ` 配送休止日：${blockedWeekdayLabel}`;
   if (blockedDates.length > 0) {
     msg += `${blockedWeekdayLabel ? "、" : " 配送休止日："}${blockedDates.join("、")}`;
@@ -601,22 +628,45 @@ function validateDesiredDate() {
   return false;
 }
 
-function getSubtotal() {
+// 現在かごに入っている全ての行（人前選択商品・通常商品）を、表示用の統一形式で返す
+function getCartEntries() {
   const deliveryType = getDeliveryType();
-  let subtotal = 0;
+  const entries = [];
   PRODUCTS.forEach((p) => {
     if (!p.availableFor.includes(deliveryType)) return;
     if (isServingBased(p)) {
       (servingLines[p.id] || []).forEach((line) => {
-        subtotal += p.price * line.servings * line.count;
-        if (line.box) subtotal += line.box.price * line.count;
+        const boxFeeTotal = line.box ? line.box.price * line.count : 0;
+        const purposeLabel = line.purpose === "gift" ? "お土産用" : line.purpose === "home" ? "自宅用" : "";
+        const subParts = [purposeLabel, line.box ? `折箱:${line.box.name}` : ""].filter(Boolean);
+        entries.push({
+          productId: p.id,
+          lineId: line.id,
+          kind: "serving",
+          label: `${p.name}（${line.servings}人前${line.count > 1 ? ` × ${line.count}個` : ""}）`,
+          subLabel: subParts.join("・"),
+          amount: p.price * line.servings * line.count + boxFeeTotal,
+        });
       });
       return;
     }
-    const q = quantities[p.id];
-    subtotal += deliveryType === "pickup" ? p.price * (q.home + q.gift) : p.price * q.ship;
+    (regularLines[p.id] || []).forEach((line) => {
+      const purposeLabel = line.purpose === "gift" ? "お土産用" : line.purpose === "home" ? "自宅用" : "";
+      entries.push({
+        productId: p.id,
+        lineId: line.id,
+        kind: "regular",
+        label: `${p.name} × ${line.quantity}`,
+        subLabel: purposeLabel,
+        amount: p.price * line.quantity,
+      });
+    });
   });
-  return subtotal;
+  return entries;
+}
+
+function getSubtotal() {
+  return getCartEntries().reduce((sum, entry) => sum + entry.amount, 0);
 }
 
 // 人前選択商品の「〇人前」プルダウンの選択肢
@@ -673,12 +723,14 @@ function updateServingBoxLabel(productId) {
   labelEl.textContent = `折箱を使う（${box.name}：+¥${box.price.toLocaleString()}/個）`;
 }
 
-function qtyControlHtml(productId, purpose) {
+// 通常の数量選択商品の「数量」ステッパー（「追加」ボタンを押す前の一時的な数量）
+function regularCountControlHtml(productId) {
   return `
-    <div class="qty-control">
-      <button type="button" class="qty-btn" data-action="decrease" data-id="${productId}" data-purpose="${purpose}" aria-label="数量を減らす">−</button>
-      <span class="qty-value" id="qty-${productId}-${purpose}">0</span>
-      <button type="button" class="qty-btn" data-action="increase" data-id="${productId}" data-purpose="${purpose}" aria-label="数量を増やす">＋</button>
+    <div class="serving-count-control">
+      <span class="serving-count-caption">数量</span>
+      <button type="button" class="serving-count-btn regular-count-btn" data-action="decrease" data-id="${productId}" aria-label="数量を減らす">−</button>
+      <span class="serving-count-value" id="regular-count-${productId}">1</span>
+      <button type="button" class="serving-count-btn regular-count-btn" data-action="increase" data-id="${productId}" aria-label="数量を増やす">＋</button>
     </div>
   `;
 }
@@ -686,11 +738,11 @@ function qtyControlHtml(productId, purpose) {
 function renderProducts(deliveryType) {
   const visibleProducts = PRODUCTS.filter((p) => p.availableFor.includes(deliveryType));
 
-  // 表示されなくなる商品の数量は0にリセットする
+  // 表示されなくなる商品のかご内容はリセットする
   PRODUCTS.forEach((p) => {
     if (!p.availableFor.includes(deliveryType)) {
-      quantities[p.id] = { home: 0, gift: 0, ship: 0 };
       servingLines[p.id] = [];
+      regularLines[p.id] = [];
     }
   });
 
@@ -698,9 +750,9 @@ function renderProducts(deliveryType) {
   visibleProducts.forEach((product) => {
     const row = document.createElement("div");
     const serving = isServingBased(product);
+    row.className = "product-row product-row--split";
 
     if (deliveryType === "pickup") {
-      row.className = "product-row product-row--split";
       if (serving) {
         row.innerHTML = `
           <div class="product-info">
@@ -720,7 +772,6 @@ function renderProducts(deliveryType) {
             </div>
             <button type="button" class="serving-add-btn" id="serving-add-${product.id}" data-id="${product.id}">追加</button>
           </div>
-          <div class="serving-lines" id="servingLines-${product.id}"></div>
         `;
       } else {
         row.innerHTML = `
@@ -728,21 +779,18 @@ function renderProducts(deliveryType) {
             <div class="product-name">${escapeHtml(product.name)}</div>
             <div class="product-price">¥${product.price.toLocaleString()}</div>
           </div>
-          <div class="qty-groups">
-            <div class="qty-group">
-              <span class="qty-label">自宅用</span>
-              ${qtyControlHtml(product.id, "home")}
+          <div class="serving-add-row">
+            ${regularCountControlHtml(product.id)}
+            <div class="serving-purpose-group">
+              <label><input type="radio" name="regularPurpose-${product.id}" value="home" checked>自宅用</label>
+              <label><input type="radio" name="regularPurpose-${product.id}" value="gift">お土産用</label>
             </div>
-            <div class="qty-group">
-              <span class="qty-label">お土産用</span>
-              ${qtyControlHtml(product.id, "gift")}
-            </div>
+            <button type="button" class="regular-add-btn" data-id="${product.id}">追加</button>
           </div>
         `;
       }
     } else {
       if (serving) {
-        row.className = "product-row product-row--split";
         row.innerHTML = `
           <div class="product-info">
             <div class="product-name">${escapeHtml(product.name)}</div>
@@ -757,16 +805,17 @@ function renderProducts(deliveryType) {
             ${servingBoxCheckHtml(product.id)}
             <button type="button" class="serving-add-btn" id="serving-add-${product.id}" data-id="${product.id}">追加</button>
           </div>
-          <div class="serving-lines" id="servingLines-${product.id}"></div>
         `;
       } else {
-        row.className = "product-row";
         row.innerHTML = `
           <div class="product-info">
             <div class="product-name">${escapeHtml(product.name)}</div>
             <div class="product-price">¥${product.price.toLocaleString()}</div>
           </div>
-          ${qtyControlHtml(product.id, "ship")}
+          <div class="serving-add-row">
+            ${regularCountControlHtml(product.id)}
+            <button type="button" class="regular-add-btn" data-id="${product.id}">追加</button>
+          </div>
         `;
       }
     }
@@ -774,34 +823,65 @@ function renderProducts(deliveryType) {
     productListEl.appendChild(row);
   });
 
-  // DOM生成後に現在の数量・人前ラインを反映
+  // DOM生成後に現在の個数ステッパーの値を反映
   visibleProducts.forEach((product) => {
     if (isServingBased(product)) {
       const countEl = document.getElementById(`serving-count-${product.id}`);
       if (countEl) countEl.textContent = servingPendingCount[product.id] || 1;
       updateServingBoxLabel(product.id);
-      renderServingLinesList(product.id);
+      updateServingControlForCap(product.id);
       return;
     }
-    const purposes = deliveryType === "pickup" ? ["home", "gift"] : ["ship"];
-    purposes.forEach((purpose) => {
-      const el = document.getElementById(`qty-${product.id}-${purpose}`);
-      if (el) el.textContent = quantities[product.id][purpose];
-    });
+    const countEl = document.getElementById(`regular-count-${product.id}`);
+    if (countEl) countEl.textContent = regularPendingCount[product.id] || 1;
   });
 
   updateTotal();
 }
 
-function handleQtyClick(e) {
-  const btn = e.target.closest(".qty-btn");
-  if (!btn) return;
-  const id = btn.dataset.id;
-  const purpose = btn.dataset.purpose;
-  const delta = btn.dataset.action === "increase" ? 1 : -1;
+// 通常の数量選択商品の「数量」ステッパー・「追加」ボタンのクリックを処理する（productListEl 内で委譲）
+function handleRegularLineClick(e) {
+  const countBtn = e.target.closest(".regular-count-btn");
+  if (countBtn) {
+    changeRegularPendingCount(countBtn.dataset.id, countBtn.dataset.action === "increase" ? 1 : -1);
+    return;
+  }
+  const addBtn = e.target.closest(".regular-add-btn");
+  if (addBtn) {
+    addRegularLine(addBtn.dataset.id);
+  }
+}
 
-  quantities[id][purpose] = Math.max(0, Math.min(99, quantities[id][purpose] + delta));
-  document.getElementById(`qty-${id}-${purpose}`).textContent = quantities[id][purpose];
+function changeRegularPendingCount(productId, delta) {
+  const next = Math.max(1, Math.min(99, (regularPendingCount[productId] || 1) + delta));
+  regularPendingCount[productId] = next;
+  const countEl = document.getElementById(`regular-count-${productId}`);
+  if (countEl) countEl.textContent = next;
+}
+
+function addRegularLine(productId) {
+  const quantity = regularPendingCount[productId] || 1;
+  if (!quantity) return;
+
+  let purpose = null;
+  if (getDeliveryType() === "pickup") {
+    const checked = document.querySelector(`input[name="regularPurpose-${productId}"]:checked`);
+    purpose = checked ? checked.value : "home";
+  }
+
+  if (!regularLines[productId]) regularLines[productId] = [];
+  regularLines[productId].push({ id: makeLineId(), quantity, purpose });
+
+  // 追加後は数量を1にリセット（続けて別の数量を追加しやすいように）
+  regularPendingCount[productId] = 1;
+  const countEl = document.getElementById(`regular-count-${productId}`);
+  if (countEl) countEl.textContent = "1";
+
+  updateTotal();
+}
+
+function removeRegularLine(productId, lineId) {
+  regularLines[productId] = (regularLines[productId] || []).filter((line) => line.id !== lineId);
   updateTotal();
 }
 
@@ -865,7 +945,8 @@ function renderStockBadges() {
 
 // 人前選択商品の「追加」ボタン・個数ステッパー・行削除ボタンのクリックを処理する（productListEl 内で委譲）
 function handleServingLineClick(e) {
-  const countBtn = e.target.closest(".serving-count-btn");
+  // 「数量」用の regular-count-btn と誤反応しないよう、うなぎ商品専用のボタンだけを拾う
+  const countBtn = e.target.closest(".serving-count-btn:not(.regular-count-btn)");
   if (countBtn) {
     changeServingPendingCount(countBtn.dataset.id, countBtn.dataset.action === "increase" ? 1 : -1);
     return;
@@ -873,11 +954,6 @@ function handleServingLineClick(e) {
   const addBtn = e.target.closest(".serving-add-btn");
   if (addBtn) {
     addServingLine(addBtn.dataset.id);
-    return;
-  }
-  const removeBtn = e.target.closest(".serving-line-remove-btn");
-  if (removeBtn) {
-    removeServingLine(removeBtn.dataset.id, removeBtn.dataset.lineId);
   }
 }
 
@@ -932,7 +1008,7 @@ function addServingLine(productId) {
   const box = wantsBox ? findAutoBoxForServings(servings, getProductGrade(product)) : null;
 
   if (!servingLines[productId]) servingLines[productId] = [];
-  servingLines[productId].push({ id: makeServingLineId(), servings, count, purpose, box });
+  servingLines[productId].push({ id: makeLineId(), servings, count, purpose, box });
 
   // 追加後は個数を1・折箱チェックをオフにリセット（人前の選択はそのまま、続けて別の個数を追加しやすいように）
   servingPendingCount[productId] = 1;
@@ -940,36 +1016,14 @@ function addServingLine(productId) {
   if (countEl) countEl.textContent = "1";
   if (boxCheckEl) boxCheckEl.checked = false;
 
-  renderServingLinesList(productId);
+  updateServingControlForCap(productId);
   updateTotal();
 }
 
 function removeServingLine(productId, lineId) {
   servingLines[productId] = (servingLines[productId] || []).filter((line) => line.id !== lineId);
-  renderServingLinesList(productId);
-  updateTotal();
-}
-
-function renderServingLinesList(productId) {
-  const container = document.getElementById(`servingLines-${productId}`);
-  if (!container) return;
-  const product = findProduct(productId);
-  const lines = servingLines[productId] || [];
-  container.innerHTML = lines
-    .map((line) => {
-      const purposeLabel = line.purpose === "gift" ? "（お土産用）" : line.purpose === "home" ? "（自宅用）" : "";
-      const countLabel = line.count > 1 ? ` × ${line.count}個` : "";
-      const boxLabel = line.box ? `（折箱:${line.box.name}）` : "";
-      const lineTotal = product.price * line.servings * line.count + (line.box ? line.box.price * line.count : 0);
-      return `
-        <div class="serving-line">
-          <span>${line.servings}人前${countLabel}${boxLabel}${purposeLabel} ¥${lineTotal.toLocaleString()}</span>
-          <button type="button" class="serving-line-remove-btn" data-id="${productId}" data-line-id="${line.id}" aria-label="この行を削除">×</button>
-        </div>
-      `;
-    })
-    .join("");
   updateServingControlForCap(productId);
+  updateTotal();
 }
 
 // うなぎ商品（人前選択商品）の日別残数を取得する。
@@ -1027,7 +1081,47 @@ function updateTotal() {
 
   const total = subtotal + (shippingFee || 0);
   totalPriceEl.textContent = `¥${total.toLocaleString()}`;
+  cartSummaryTotalEl.textContent = `¥${total.toLocaleString()}`;
+  renderCart();
   return total;
+}
+
+// 買い物かごパネル（右側 / モバイルは画面下部固定）の中身を描画する
+function renderCart() {
+  const entries = getCartEntries();
+
+  if (entries.length === 0) {
+    cartItemsListEl.innerHTML = '<p class="cart-empty-hint">まだ商品が追加されていません。</p>';
+  } else {
+    cartItemsListEl.innerHTML = entries
+      .map(
+        (entry) => `
+        <div class="cart-line">
+          <div class="cart-line-info">
+            <div class="cart-line-name">${escapeHtml(entry.label)}</div>
+            ${entry.subLabel ? `<div class="cart-line-sub">${escapeHtml(entry.subLabel)}</div>` : ""}
+          </div>
+          <div class="cart-line-amount">¥${entry.amount.toLocaleString()}</div>
+          <button type="button" class="cart-line-remove-btn" data-kind="${entry.kind}" data-product-id="${entry.productId}" data-line-id="${entry.lineId}" aria-label="この商品をかごから削除">×</button>
+        </div>
+      `
+      )
+      .join("");
+  }
+
+  cartSummaryCountEl.textContent = `${entries.length}点`;
+}
+
+// かご内の削除ボタンのクリックを処理する（cartItemsListEl 内で委譲）
+function handleCartLineClick(e) {
+  const removeBtn = e.target.closest(".cart-line-remove-btn");
+  if (!removeBtn) return;
+  const { kind, productId, lineId } = removeBtn.dataset;
+  if (kind === "serving") {
+    removeServingLine(productId, lineId);
+  } else {
+    removeRegularLine(productId, lineId);
+  }
 }
 
 function getMinSelectableDateStr() {
@@ -1170,7 +1264,7 @@ function setupDeliveryTypeToggle() {
       updateDateHint();
       updatePaymentHint();
       resetDatePicker();
-      resetServingLines();
+      resetCartLines();
       if (!isShipping) {
         invoiceDifferentInput.checked = false;
         invoiceFieldsEl.classList.add("hidden");
@@ -1180,11 +1274,13 @@ function setupDeliveryTypeToggle() {
   });
 }
 
-// 受け取り方法の切り替え時、人前選択商品のライン（自宅用/お土産用の意味が変わるため）は一旦クリアする
-function resetServingLines() {
+// 受け取り方法の切り替え時、かごの中身（自宅用/お土産用の意味が変わるため）は一旦クリアする
+function resetCartLines() {
   PRODUCTS.forEach((p) => {
     servingLines[p.id] = [];
     servingPendingCount[p.id] = 1;
+    regularLines[p.id] = [];
+    regularPendingCount[p.id] = 1;
   });
 }
 
@@ -1269,17 +1365,17 @@ function buildPayload() {
       return;
     }
 
-    const q = quantities[p.id];
-    if (deliveryType === "pickup") {
-      if (q.home > 0) {
-        items.push({ productId: p.id, name: p.name, purpose: "自宅用", unitPrice: p.price, quantity: q.home, subtotal: p.price * q.home });
-      }
-      if (q.gift > 0) {
-        items.push({ productId: p.id, name: p.name, purpose: "お土産用", unitPrice: p.price, quantity: q.gift, subtotal: p.price * q.gift });
-      }
-    } else if (q.ship > 0) {
-      items.push({ productId: p.id, name: p.name, purpose: null, unitPrice: p.price, quantity: q.ship, subtotal: p.price * q.ship });
-    }
+    (regularLines[p.id] || []).forEach((line) => {
+      const purpose = deliveryType === "pickup" ? (line.purpose === "gift" ? "お土産用" : "自宅用") : null;
+      items.push({
+        productId: p.id,
+        name: p.name,
+        purpose,
+        unitPrice: p.price,
+        quantity: line.quantity,
+        subtotal: p.price * line.quantity,
+      });
+    });
   });
 
   const subtotal = getSubtotal();
@@ -1369,8 +1465,7 @@ async function handleSubmit(e) {
 
 function resetForm() {
   form.reset();
-  PRODUCTS.forEach((p) => (quantities[p.id] = { home: 0, gift: 0, ship: 0 }));
-  resetServingLines();
+  resetCartLines();
   shippingFieldsEl.classList.add("hidden");
   pickupNoteEl.classList.remove("hidden");
   desiredTimePickupSlotEl.classList.remove("hidden");
