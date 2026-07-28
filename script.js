@@ -6,7 +6,7 @@ const CONFIG = {
   shopContact: "お問い合わせ：000-0000-0000",
   // Google Apps Script を「ウェブアプリ」として公開した後に発行される URL を貼り付けてください
   // 例: https://script.google.com/macros/s/xxxxxxxxxxxxxxxx/exec
-  gasEndpoint: "https://script.google.com/macros/s/AKfycbzqKF3FHfBLJhxLxItNJqxB7_AWzMWZTgqS63z5WSCej2biaxM4FoAc7Tkdyu0gtY-NpQ/exec",
+  gasEndpoint: "GAS_WEB_APP_URL_HERE",
   // 注文可能な最短日（0=当日可, 1=翌日以降のみ）
   minDaysAhead: 1,
 
@@ -16,26 +16,13 @@ const CONFIG = {
     // "2026-08-05",
   ],
 
-  // --- 店頭受け取り ---
-  // 定休日（水曜）は店舗が閉まっているため受け取り不可（0=日, 1=月, 2=火, 3=水, 4=木, 5=金, 6=土）
+  // --- 定休日・臨時休業（店頭受け取り・配送で共有） ---
+  // 定休日（水曜）。店頭受け取りはその日自体が不可、配送はその翌日の着荷が不可になります
+  // （着日の前日に発送するため。0=日, 1=月, 2=火, 3=水, 4=木, 5=金, 6=土）
   pickupClosedWeekdays: [3],
-  // 受け取り不可の個別の日付（"YYYY-MM-DD"）。臨時休業などをここに追加
+  // 臨時休業の個別の日付（"YYYY-MM-DD"）。店頭受け取りはその日自体が不可、配送はその翌日の着荷が不可になります
   pickupUnavailableDates: [
     // "2026-08-13", "2026-08-14", "2026-08-15",
-  ],
-
-  // --- 配送 ---
-  // 「発送できない曜日/日付」を指定すると、その翌日の着荷が自動的に不可になります
-  // （着日の前日に発送するため。定休日そのものの着荷は前日発送分が届くので可能）
-  // 発送できない曜日（定休日など）。0=日, 1=月, 2=火, 3=水, 4=木, 5=金, 6=土
-  shippingNoDispatchWeekdays: [3],
-  // 発送できない個別の日付（"YYYY-MM-DD"）。定休日ではないが発送作業ができない日
-  shippingNoDispatchDates: [
-    "2026-07-26",
-  ],
-  // 着日そのものを直接指定して配送不可にしたい場合（配送業者の休業日など）
-  shippingUnavailableDates: [
-    // "2026-01-01",
   ],
 
   // 店頭受け取りの時間帯（営業時間 9:00〜18:00、受け取りは10:00〜17:45の間で30分刻み）
@@ -228,9 +215,6 @@ async function fetchRemoteSettings() {
     if (Array.isArray(s.pickupClosedWeekdays)) CONFIG.pickupClosedWeekdays = s.pickupClosedWeekdays;
     if (Array.isArray(s.pickupUnavailableDates)) CONFIG.pickupUnavailableDates = s.pickupUnavailableDates;
     if (Array.isArray(s.specialOpenDates)) CONFIG.specialOpenDates = s.specialOpenDates;
-    if (Array.isArray(s.shippingNoDispatchWeekdays)) CONFIG.shippingNoDispatchWeekdays = s.shippingNoDispatchWeekdays;
-    if (Array.isArray(s.shippingNoDispatchDates)) CONFIG.shippingNoDispatchDates = s.shippingNoDispatchDates;
-    if (Array.isArray(s.shippingUnavailableDates)) CONFIG.shippingUnavailableDates = s.shippingUnavailableDates;
     if (s.unagiDailyCapacity && typeof s.unagiDailyCapacity === "object") {
       CONFIG.unagiDailyCapacity = s.unagiDailyCapacity;
     }
@@ -261,6 +245,8 @@ async function fetchRemoteProducts() {
       // 管理画面では受け取り方法を分けて設定しないため、両方の受け取り方法で注文可能として扱う
       availableFor: ["pickup", "shipping"],
     }));
+    // うなぎ管理タブの商品（〇人前選択）を上、商品タブの商品を下に表示する（各グループ内の順序は管理画面での並び順のまま）
+    PRODUCTS.sort((a, b) => Number(isServingBased(b)) - Number(isServingBased(a)));
   } catch (err) {
     // 取得に失敗した場合は script.js 内の初期値のまま動作する
   }
@@ -552,39 +538,24 @@ function addDays(dateStr, days) {
 }
 
 // 指定した日付がその受け取り方法で選択可能かどうか
+// 定休日・臨時休業は店頭受け取り・配送で共有する設定。配送は発送日（着日の前日）がこれに該当するかで判定する
 function isDateAvailable(dateStr, deliveryType) {
   if (!dateStr) return true; // 未入力は別途必須チェックで扱う
-  const weekday = new Date(`${dateStr}T00:00:00`).getDay();
 
-  if (deliveryType === "pickup") {
-    const isSpecialOpen = CONFIG.specialOpenDates.includes(dateStr);
-    if (!isSpecialOpen && CONFIG.pickupClosedWeekdays.includes(weekday)) return false;
-    if (CONFIG.pickupUnavailableDates.includes(dateStr)) return false;
-    return true;
-  }
-
-  // 配送: 着日そのものの直接指定に加え、「発送できない日/曜日」の翌日も自動的に不可にする
-  // ただし発送日が特別営業日に指定されていれば発送可能とみなす
-  if (CONFIG.shippingUnavailableDates.includes(dateStr)) return false;
-  const dispatchDay = addDays(dateStr, -1);
-  const dispatchWeekday = new Date(`${dispatchDay}T00:00:00`).getDay();
-  const dispatchIsSpecialOpen = CONFIG.specialOpenDates.includes(dispatchDay);
-  if (!dispatchIsSpecialOpen && CONFIG.shippingNoDispatchWeekdays.includes(dispatchWeekday)) return false;
-  if (CONFIG.shippingNoDispatchDates.includes(dispatchDay)) return false;
+  const targetDate = deliveryType === "pickup" ? dateStr : addDays(dateStr, -1);
+  const weekday = new Date(`${targetDate}T00:00:00`).getDay();
+  const isSpecialOpen = CONFIG.specialOpenDates.includes(targetDate);
+  if (!isSpecialOpen && CONFIG.pickupClosedWeekdays.includes(weekday)) return false;
+  if (CONFIG.pickupUnavailableDates.includes(targetDate)) return false;
   return true;
 }
 
-// その日付が「通常は定休日/発送不可だが特別営業により利用可能」になっているか
+// その日付が「通常は定休日/臨時休業だが特別営業により利用可能」になっているか
 function isSpecialOpenOverride(dateStr, deliveryType) {
-  if (!CONFIG.specialOpenDates.includes(deliveryType === "pickup" ? dateStr : addDays(dateStr, -1))) {
-    return false;
-  }
-  const weekday = new Date(`${dateStr}T00:00:00`).getDay();
-  if (deliveryType === "pickup") {
-    return CONFIG.pickupClosedWeekdays.includes(weekday);
-  }
-  const dispatchWeekday = new Date(`${addDays(dateStr, -1)}T00:00:00`).getDay();
-  return CONFIG.shippingNoDispatchWeekdays.includes(dispatchWeekday);
+  const targetDate = deliveryType === "pickup" ? dateStr : addDays(dateStr, -1);
+  if (!CONFIG.specialOpenDates.includes(targetDate)) return false;
+  const weekday = new Date(`${targetDate}T00:00:00`).getDay();
+  return CONFIG.pickupClosedWeekdays.includes(weekday);
 }
 
 function updateDateHint() {
@@ -602,14 +573,11 @@ function updateDateHint() {
     return;
   }
 
-  // 配送: 発送不可日/曜日の翌日を配送休止日として表示する
-  const blockedWeekdayLabel = [...new Set(CONFIG.shippingNoDispatchWeekdays.map((d) => (d + 1) % 7))]
+  // 配送: 定休日・臨時休業日の翌日を配送休止日として表示する
+  const blockedWeekdayLabel = [...new Set(CONFIG.pickupClosedWeekdays.map((d) => (d + 1) % 7))]
     .map((d) => `${weekdayNames[d]}曜日`)
     .join("・");
-  const blockedDates = [
-    ...CONFIG.shippingNoDispatchDates.map((d) => addDays(d, 1)),
-    ...CONFIG.shippingUnavailableDates,
-  ];
+  const blockedDates = CONFIG.pickupUnavailableDates.map((d) => addDays(d, 1));
   if (blockedWeekdayLabel) msg += ` 配送休止日：${blockedWeekdayLabel}`;
   if (blockedDates.length > 0) {
     msg += `${blockedWeekdayLabel ? "、" : " 配送休止日："}${blockedDates.join("、")}`;
@@ -773,8 +741,8 @@ function renderProducts(deliveryType) {
         `;
       }
     } else {
-      row.className = "product-row";
       if (serving) {
+        row.className = "product-row product-row--split";
         row.innerHTML = `
           <div class="product-info">
             <div class="product-name">${escapeHtml(product.name)}</div>
@@ -792,6 +760,7 @@ function renderProducts(deliveryType) {
           <div class="serving-lines" id="servingLines-${product.id}"></div>
         `;
       } else {
+        row.className = "product-row";
         row.innerHTML = `
           <div class="product-info">
             <div class="product-name">${escapeHtml(product.name)}</div>

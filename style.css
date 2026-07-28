@@ -435,10 +435,20 @@ textarea {
 
 .product-info {
   flex: 1;
+  min-width: 0;
+}
+
+/* 縦積みレイアウトでは横方向の縮小競合が発生しないため、幅を明示して確実に全幅確保する */
+.product-row--split .product-info {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .product-name {
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .product-price {
