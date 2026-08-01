@@ -437,6 +437,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-top: 20px;
 }
 
 .product-row {
@@ -461,12 +462,30 @@ textarea {
 .product-info {
   flex: 1;
   min-width: 0;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
 }
 
 /* 縦積みレイアウトでは横方向の縮小競合が発生しないため、幅を明示して確実に全幅確保する */
 .product-row--split .product-info {
   width: 100%;
   box-sizing: border-box;
+}
+
+.product-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 1px solid var(--color-border);
+  flex-shrink: 0;
+  background: var(--color-bg);
+}
+
+.product-text {
+  flex: 1;
+  min-width: 0;
 }
 
 .product-name {

@@ -275,6 +275,7 @@ async function fetchRemoteProducts() {
       name: p.name,
       price: p.price,
       maxServings: p.maxServings,
+      imageUrl: p.imageUrl || "",
       // 管理画面では受け取り方法を分けて設定しないため、両方の受け取り方法で注文可能として扱う
       availableFor: ["pickup", "shipping"],
     }));
@@ -750,6 +751,12 @@ function regularCountControlHtml(productId) {
   `;
 }
 
+// 商品写真（管理画面「商品」「うなぎ管理」タブでアップロード）。未設定の商品には表示しない
+function productThumbHtml(product) {
+  if (!product.imageUrl) return "";
+  return `<img class="product-thumb" src="${escapeHtml(product.imageUrl)}" alt="" loading="lazy">`;
+}
+
 function renderProducts(deliveryType) {
   const visibleProducts = PRODUCTS.filter((p) => p.availableFor.includes(deliveryType));
 
@@ -771,9 +778,12 @@ function renderProducts(deliveryType) {
       if (serving) {
         row.innerHTML = `
           <div class="product-info">
-            <div class="product-name">${escapeHtml(product.name)}</div>
-            <div class="product-price">¥${product.price.toLocaleString()} / 人前</div>
-            <div class="stock-badge" id="stock-${product.id}">受け取り日を選択すると残り人前数を表示します</div>
+            ${productThumbHtml(product)}
+            <div class="product-text">
+              <div class="product-name">${escapeHtml(product.name)}</div>
+              <div class="product-price">¥${product.price.toLocaleString()} / 人前</div>
+              <div class="stock-badge" id="stock-${product.id}">受け取り日を選択すると残り人前数を表示します</div>
+            </div>
           </div>
           <div class="serving-add-row">
             <select class="serving-select" id="serving-select-${product.id}">
@@ -791,8 +801,11 @@ function renderProducts(deliveryType) {
       } else {
         row.innerHTML = `
           <div class="product-info">
-            <div class="product-name">${escapeHtml(product.name)}</div>
-            <div class="product-price">¥${product.price.toLocaleString()}</div>
+            ${productThumbHtml(product)}
+            <div class="product-text">
+              <div class="product-name">${escapeHtml(product.name)}</div>
+              <div class="product-price">¥${product.price.toLocaleString()}</div>
+            </div>
           </div>
           <div class="serving-add-row">
             ${regularCountControlHtml(product.id)}
@@ -808,9 +821,12 @@ function renderProducts(deliveryType) {
       if (serving) {
         row.innerHTML = `
           <div class="product-info">
-            <div class="product-name">${escapeHtml(product.name)}</div>
-            <div class="product-price">¥${product.price.toLocaleString()} / 人前</div>
-            <div class="stock-badge" id="stock-${product.id}">発送日を選択すると残り人前数を表示します</div>
+            ${productThumbHtml(product)}
+            <div class="product-text">
+              <div class="product-name">${escapeHtml(product.name)}</div>
+              <div class="product-price">¥${product.price.toLocaleString()} / 人前</div>
+              <div class="stock-badge" id="stock-${product.id}">発送日を選択すると残り人前数を表示します</div>
+            </div>
           </div>
           <div class="serving-add-row">
             <select class="serving-select" id="serving-select-${product.id}">
@@ -824,8 +840,11 @@ function renderProducts(deliveryType) {
       } else {
         row.innerHTML = `
           <div class="product-info">
-            <div class="product-name">${escapeHtml(product.name)}</div>
-            <div class="product-price">¥${product.price.toLocaleString()}</div>
+            ${productThumbHtml(product)}
+            <div class="product-text">
+              <div class="product-name">${escapeHtml(product.name)}</div>
+              <div class="product-price">¥${product.price.toLocaleString()}</div>
+            </div>
           </div>
           <div class="serving-add-row">
             ${regularCountControlHtml(product.id)}
