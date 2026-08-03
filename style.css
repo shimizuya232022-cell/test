@@ -596,7 +596,8 @@ textarea {
   color: var(--color-text-muted);
 }
 
-.serving-add-btn {
+.serving-add-btn,
+.regular-add-btn {
   padding: 8px 18px;
   font-size: 0.85rem;
   font-weight: 700;
@@ -607,11 +608,13 @@ textarea {
   cursor: pointer;
 }
 
-.serving-add-btn:active {
+.serving-add-btn:active,
+.regular-add-btn:active {
   background: var(--color-primary-dark);
 }
 
-.serving-add-btn:disabled {
+.serving-add-btn:disabled,
+.regular-add-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
