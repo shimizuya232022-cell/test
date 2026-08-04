@@ -687,24 +687,48 @@ function getSubtotal() {
 }
 
 // 人前選択商品の「〇人前」プルダウンの選択肢
-// allowManual: trueの場合、プルダウンの最後に「その他（人数を入力）」を追加する（店頭受け取りのみ、最大人前数を超える注文用）
+// allowManual: trueの場合、プルダウンの最後に「それ以上（人数を入力）」を追加する（店頭受け取りのみ、最大人前数を超える注文用）
 function servingSelectOptionsHtml(maxServings, allowManual) {
   let html = "";
   for (let i = 1; i <= maxServings; i++) {
     html += `<option value="${i}">${i}人前</option>`;
   }
   if (allowManual) {
-    html += `<option value="custom">その他（人数を入力）</option>`;
+    html += `<option value="custom" class="serving-custom-option">それ以上（人数を入力）</option>`;
   }
   return html;
 }
 
-// 「その他（人数を入力）」を選んだ時に表示する手入力欄（店頭受け取りのみ）
+// 「それ以上（人数を入力）」は自宅用のみ（お土産用は商品の最大人前数まで）。
+// お土産用に切り替わった時点で「それ以上」が選ばれていれば、最大人前数まで引き下げる。
+function updateServingCustomOptionAvailability(productId) {
+  const selectEl = document.getElementById(`serving-select-${productId}`);
+  if (!selectEl) return;
+  const customOption = selectEl.querySelector('option[value="custom"]');
+  if (!customOption) return; // 配送などそもそも「それ以上」を持たない場合
+
+  let purpose = "home";
+  if (getDeliveryType() === "pickup") {
+    const checked = document.querySelector(`input[name="servingPurpose-${productId}"]:checked`);
+    purpose = checked ? checked.value : "home";
+  }
+
+  const disallow = purpose === "gift";
+  customOption.disabled = disallow;
+  if (disallow && selectEl.value === "custom") {
+    const product = findProduct(productId);
+    selectEl.value = String(product.maxServings);
+    const customEl = document.getElementById(`serving-select-custom-${productId}`);
+    if (customEl) customEl.classList.add("hidden");
+  }
+}
+
+// 「それ以上（人数を入力）」を選んだ時に表示する手入力欄（店頭受け取りのみ）
 function servingSelectCustomInputHtml(productId) {
   return `<input type="number" class="serving-select-custom hidden" id="serving-select-custom-${productId}" min="1" step="1" inputmode="numeric" placeholder="人前数">`;
 }
 
-// 「〇人前」の実際の選択数を返す（プルダウンで数値を選んだ場合はその値、「その他」選択時は手入力欄の値）
+// 「〇人前」の実際の選択数を返す（プルダウンで数値を選んだ場合はその値、「それ以上」選択時は手入力欄の値）
 function getSelectedServings(productId) {
   const selectEl = document.getElementById(`serving-select-${productId}`);
   if (!selectEl) return 0;
@@ -739,11 +763,23 @@ function servingBoxCheckHtml(productId) {
 }
 
 // 選択中の「〇人前」に応じて自動選択される折箱の名前・価格をチェック欄のラベルに反映する。
-// 対応する折箱がない場合はチェック欄を無効化する。
+// 対応する折箱がない場合はチェック欄を無効化する。店頭受け取りで「自宅用」を選んでいる場合も、
+// 折箱はお土産用のみのため無効化する（配送には自宅用/お土産用の区別がないため対象外）。
 function updateServingBoxLabel(productId) {
   const labelEl = document.getElementById(`serving-box-label-${productId}`);
   const checkboxEl = document.getElementById(`serving-box-${productId}`);
   if (!labelEl || !checkboxEl) return;
+
+  if (getDeliveryType() === "pickup") {
+    const purposeChecked = document.querySelector(`input[name="servingPurpose-${productId}"]:checked`);
+    const purpose = purposeChecked ? purposeChecked.value : "home";
+    if (purpose === "home") {
+      labelEl.textContent = "折箱を使う（お土産用のみ選択できます）";
+      checkboxEl.checked = false;
+      checkboxEl.disabled = true;
+      return;
+    }
+  }
 
   const servings = getSelectedServings(productId) || 1;
   const product = findProduct(productId);
@@ -883,6 +919,7 @@ function renderProducts(deliveryType) {
     if (isServingBased(product)) {
       const countEl = document.getElementById(`serving-count-${product.id}`);
       if (countEl) countEl.textContent = servingPendingCount[product.id] || 1;
+      updateServingCustomOptionAvailability(product.id);
       updateServingBoxLabel(product.id);
       updateServingControlForCap(product.id);
       return;
@@ -1026,6 +1063,14 @@ function handleServingLineClick(e) {
 
 // serving-select（またはその手入力欄）の変更時、個数ステッパー・追加ボタンの有効/無効を再計算する
 function handleServingSelectChange(e) {
+  const purposeEl = e.target.closest('input[name^="servingPurpose-"]');
+  if (purposeEl) {
+    const productId = purposeEl.name.replace("servingPurpose-", "");
+    updateServingCustomOptionAvailability(productId);
+    updateServingControlForCap(productId);
+    updateServingBoxLabel(productId);
+    return;
+  }
   const selectEl = e.target.closest(".serving-select");
   if (selectEl) {
     const productId = selectEl.id.replace("serving-select-", "");
