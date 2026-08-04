@@ -32,9 +32,9 @@ const CONFIG = {
     // "2026-08-13",
   ],
 
-  // 店頭受け取りの時間帯（営業時間 9:00〜18:00、受け取りは10:00〜17:45の間で30分刻み）
+  // 店頭受け取りの時間帯（営業時間 9:00〜18:00、受け取りは10:00〜17:30の間で30分刻み）
   pickupTimeStart: "10:00",
-  pickupTimeEnd: "17:45",
+  pickupTimeEnd: "17:30",
   pickupTimeStepMinutes: 30,
 
   // うなぎ商品（人前選択商品）の、日ごとの人前数上限（管理画面「うなぎ管理」タブで編集、店頭受け取り・配送で共有）。
@@ -786,7 +786,7 @@ function updateServingBoxLabel(productId) {
   const box = findAutoBoxForServings(servings, getProductGrade(product));
 
   if (!box) {
-    labelEl.textContent = "折箱を使う（対応する折箱がありません）";
+    labelEl.textContent = "折箱を使う（対応する折箱なし）";
     checkboxEl.checked = false;
     checkboxEl.disabled = true;
     return;
