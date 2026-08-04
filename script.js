@@ -774,7 +774,7 @@ function updateServingBoxLabel(productId) {
     const purposeChecked = document.querySelector(`input[name="servingPurpose-${productId}"]:checked`);
     const purpose = purposeChecked ? purposeChecked.value : "home";
     if (purpose === "home") {
-      labelEl.textContent = "折箱を使う（お土産用のみ選択できます）";
+      labelEl.textContent = "折箱を使う（お土産用のみ選択可）";
       checkboxEl.checked = false;
       checkboxEl.disabled = true;
       return;
@@ -847,11 +847,11 @@ function renderProducts(deliveryType) {
             </select>
             ${servingSelectCustomInputHtml(product.id)}
             ${servingCountControlHtml(product.id)}
-            ${servingBoxCheckHtml(product.id)}
             <div class="serving-purpose-group">
               <label><input type="radio" name="servingPurpose-${product.id}" value="home" checked>自宅用</label>
               <label><input type="radio" name="servingPurpose-${product.id}" value="gift">お土産用</label>
             </div>
+            ${servingBoxCheckHtml(product.id)}
             <button type="button" class="serving-add-btn" id="serving-add-${product.id}" data-id="${product.id}">追加</button>
           </div>
         `;
@@ -990,7 +990,11 @@ function updateServingControlForCap(productId) {
   if (!selectEl || !addBtn) return;
 
   if (typeof remaining !== "number") {
-    Array.from(selectEl.options).forEach((opt) => (opt.disabled = false));
+    // 「それ以上」の無効/有効はupdateServingCustomOptionAvailability（自宅用/お土産用）が管理するため、ここでは触らない
+    Array.from(selectEl.options).forEach((opt) => {
+      if (opt.value === "custom") return;
+      opt.disabled = false;
+    });
     addBtn.disabled = false;
     if (incBtn) incBtn.disabled = false;
     return;
