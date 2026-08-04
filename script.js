@@ -428,6 +428,7 @@ async function init() {
   productListEl.addEventListener("click", handleRegularLineClick);
   productListEl.addEventListener("click", handleServingLineClick);
   productListEl.addEventListener("change", handleServingSelectChange);
+  productListEl.addEventListener("input", handleServingSelectChange);
   cartItemsListEl.addEventListener("click", handleCartLineClick);
   cartSummaryBarEl.addEventListener("click", () => {
     cartPanelEl.classList.toggle("cart-panel--expanded");
@@ -686,12 +687,32 @@ function getSubtotal() {
 }
 
 // 人前選択商品の「〇人前」プルダウンの選択肢
-function servingSelectOptionsHtml(maxServings) {
+// allowManual: trueの場合、プルダウンの最後に「その他（人数を入力）」を追加する（店頭受け取りのみ、最大人前数を超える注文用）
+function servingSelectOptionsHtml(maxServings, allowManual) {
   let html = "";
   for (let i = 1; i <= maxServings; i++) {
     html += `<option value="${i}">${i}人前</option>`;
   }
+  if (allowManual) {
+    html += `<option value="custom">その他（人数を入力）</option>`;
+  }
   return html;
+}
+
+// 「その他（人数を入力）」を選んだ時に表示する手入力欄（店頭受け取りのみ）
+function servingSelectCustomInputHtml(productId) {
+  return `<input type="number" class="serving-select-custom hidden" id="serving-select-custom-${productId}" min="1" step="1" inputmode="numeric" placeholder="人前数">`;
+}
+
+// 「〇人前」の実際の選択数を返す（プルダウンで数値を選んだ場合はその値、「その他」選択時は手入力欄の値）
+function getSelectedServings(productId) {
+  const selectEl = document.getElementById(`serving-select-${productId}`);
+  if (!selectEl) return 0;
+  if (selectEl.value === "custom") {
+    const customEl = document.getElementById(`serving-select-custom-${productId}`);
+    return customEl ? Math.max(0, Math.floor(Number(customEl.value)) || 0) : 0;
+  }
+  return Number(selectEl.value) || 0;
 }
 
 // 人前選択商品の「個数」ステッパー（〇人前パックをいくつ追加するか）
@@ -724,8 +745,7 @@ function updateServingBoxLabel(productId) {
   const checkboxEl = document.getElementById(`serving-box-${productId}`);
   if (!labelEl || !checkboxEl) return;
 
-  const selectEl = document.getElementById(`serving-select-${productId}`);
-  const servings = selectEl ? Number(selectEl.value) || 1 : 1;
+  const servings = getSelectedServings(productId) || 1;
   const product = findProduct(productId);
   const box = findAutoBoxForServings(servings, getProductGrade(product));
 
@@ -787,8 +807,9 @@ function renderProducts(deliveryType) {
           </div>
           <div class="serving-add-row">
             <select class="serving-select" id="serving-select-${product.id}">
-              ${servingSelectOptionsHtml(product.maxServings)}
+              ${servingSelectOptionsHtml(product.maxServings, true)}
             </select>
+            ${servingSelectCustomInputHtml(product.id)}
             ${servingCountControlHtml(product.id)}
             ${servingBoxCheckHtml(product.id)}
             <div class="serving-purpose-group">
@@ -942,10 +963,11 @@ function updateServingControlForCap(productId) {
   const remainingForNewLine = Math.max(0, remaining - usedSoFar);
 
   Array.from(selectEl.options).forEach((opt) => {
+    if (opt.value === "custom") return; // 手入力欄は個別に検証するため、選択肢自体は無効化しない
     opt.disabled = Number(opt.value) > remainingForNewLine;
   });
 
-  const servings = Number(selectEl.value) || 1;
+  const servings = getSelectedServings(productId) || 1;
   const currentCount = servingPendingCount[productId] || 1;
   const maxCount = servings > 0 ? Math.floor(remainingForNewLine / servings) : 0;
 
@@ -1002,13 +1024,23 @@ function handleServingLineClick(e) {
   }
 }
 
-// serving-select の変更時、個数ステッパー・追加ボタンの有効/無効を再計算する
+// serving-select（またはその手入力欄）の変更時、個数ステッパー・追加ボタンの有効/無効を再計算する
 function handleServingSelectChange(e) {
   const selectEl = e.target.closest(".serving-select");
-  if (!selectEl) return;
-  const productId = selectEl.id.replace("serving-select-", "");
-  updateServingControlForCap(productId);
-  updateServingBoxLabel(productId);
+  if (selectEl) {
+    const productId = selectEl.id.replace("serving-select-", "");
+    const customEl = document.getElementById(`serving-select-custom-${productId}`);
+    if (customEl) customEl.classList.toggle("hidden", selectEl.value !== "custom");
+    updateServingControlForCap(productId);
+    updateServingBoxLabel(productId);
+    return;
+  }
+  const customEl = e.target.closest(".serving-select-custom");
+  if (customEl) {
+    const productId = customEl.id.replace("serving-select-custom-", "");
+    updateServingControlForCap(productId);
+    updateServingBoxLabel(productId);
+  }
 }
 
 function changeServingPendingCount(productId, delta) {
@@ -1018,8 +1050,7 @@ function changeServingPendingCount(productId, delta) {
   const grade = getProductGrade(product);
 
   if (delta > 0 && typeof stockRemaining[grade] === "number") {
-    const selectEl = document.getElementById(`serving-select-${productId}`);
-    const servings = selectEl ? Number(selectEl.value) || 1 : 1;
+    const servings = getSelectedServings(productId) || 1;
     const usedSoFar = getUsedServingsForGrade(grade);
     const remainingForNewLine = Math.max(0, stockRemaining[grade] - usedSoFar);
     const maxCount = servings > 0 ? Math.floor(remainingForNewLine / servings) : 0;
@@ -1035,7 +1066,7 @@ function changeServingPendingCount(productId, delta) {
 function addServingLine(productId) {
   const selectEl = document.getElementById(`serving-select-${productId}`);
   if (!selectEl) return;
-  const servings = Number(selectEl.value);
+  const servings = getSelectedServings(productId);
   const count = servingPendingCount[productId] || 1;
   if (!servings || !count) return;
 
