@@ -209,6 +209,7 @@ const paymentHintEl = document.getElementById("paymentHint");
 const invoiceDifferentInput = document.getElementById("invoiceDifferent");
 const invoiceFieldsEl = document.getElementById("invoiceFields");
 const invoiceRecipientNameInput = document.getElementById("invoiceRecipientName");
+const invoiceRecipientTelInput = document.getElementById("invoiceRecipientTel");
 const invoiceZipInput = document.getElementById("invoiceZip");
 const invoiceZipLookupBtn = document.getElementById("invoiceZipLookupBtn");
 const invoiceZipHintEl = document.getElementById("invoiceZipHint");
@@ -403,6 +404,7 @@ function applyOrderToForm(order) {
       invoiceDifferentInput.checked = true;
       invoiceFieldsEl.classList.remove("hidden");
       invoiceRecipientNameInput.value = order.invoiceRecipientName || "";
+      invoiceRecipientTelInput.value = order.invoiceRecipientTel || "";
       invoiceZipInput.value = order.invoiceZip || "";
       invoiceAddressInput.value = order.invoiceAddress || "";
       invoiceAddressBuildingInput.value = order.invoiceAddressBuilding || "";
@@ -1468,6 +1470,7 @@ function validate(payload) {
     }
     if (payload.invoiceDifferent) {
       if (!payload.invoiceRecipientName.trim()) return "請求書送付先の宛名を入力してください。";
+      if (!payload.invoiceRecipientTel.trim()) return "請求書送付先の電話番号を入力してください。";
       if (!payload.invoiceZip.trim()) return "請求書送付先の郵便番号を入力してください。";
       if (!payload.invoiceAddress.trim()) return "請求書送付先のご住所を入力してください。";
     }
@@ -1546,6 +1549,7 @@ function buildPayload() {
     totalAmount,
     invoiceDifferent,
     invoiceRecipientName: invoiceDifferent ? formData.get("invoiceRecipientName") || "" : "",
+    invoiceRecipientTel: invoiceDifferent ? formData.get("invoiceRecipientTel") || "" : "",
     invoiceZip: invoiceDifferent ? formData.get("invoiceZip") || "" : "",
     invoiceAddress: invoiceDifferent ? formData.get("invoiceAddress") || "" : "",
     invoiceAddressBuilding: invoiceDifferent ? formData.get("invoiceAddressBuilding") || "" : "",
