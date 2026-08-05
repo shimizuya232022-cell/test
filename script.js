@@ -7,8 +7,10 @@ const CONFIG = {
   // Google Apps Script を「ウェブアプリ」として公開した後に発行される URL を貼り付けてください
   // 例: https://script.google.com/macros/s/xxxxxxxxxxxxxxxx/exec
   gasEndpoint: "https://script.google.com/macros/s/AKfycbzqKF3FHfBLJhxLxItNJqxB7_AWzMWZTgqS63z5WSCej2biaxM4FoAc7Tkdyu0gtY-NpQ/exec",
-  // 注文可能な最短日（0=当日可, 1=翌日以降のみ）
-  minDaysAhead: 1,
+  // 注文可能な最短日（0=当日可, 1=翌日以降のみ）。店頭受け取りは当日でも受け取り希望時間の30分前まで注文できるため0、
+  // 配送は前日の午前中までの受付想定のため1のまま
+  minDaysAheadPickup: 0,
+  minDaysAheadShipping: 1,
 
   // 定休日（曜日指定）だが特別に営業する日（"YYYY-MM-DD"）。
   // 店頭受け取りはその日自体、配送はその日を発送日とみなすため翌日の着荷が可能になります。
@@ -195,6 +197,7 @@ const desiredTimeSlotEl = document.getElementById("desiredTimeSlot");
 const timeSlotHintEl = document.getElementById("timeSlotHint");
 const pickupTimeHintEl = document.getElementById("pickupTimeHint");
 const dateHintEl = document.getElementById("dateHint");
+const closedWeekdayHintEl = document.getElementById("closedWeekdayHint");
 const dateAvailabilityErrorEl = document.getElementById("dateAvailabilityError");
 const zipInput = document.getElementById("zip");
 const zipLookupBtn = document.getElementById("zipLookupBtn");
@@ -458,7 +461,7 @@ function setupInvoiceToggle() {
 function updatePaymentHint() {
   paymentHintEl.textContent =
     getDeliveryType() === "shipping"
-      ? "お支払いは銀行振込のみとなります。ご注文後にご請求書をお送りいたします。"
+      ? "お支払いは銀行振込のみとなります。商品と一緒にご請求書をお送りいたします。"
       : "お支払いは店頭にて現金にてお願いいたします。";
 }
 
@@ -599,35 +602,19 @@ function isSpecialOpenOverride(dateStr, deliveryType) {
   return CONFIG.pickupClosedWeekdays.includes(weekday);
 }
 
+// 受け取り不可日・配送休止日の個別日付は独自カレンダー上でグレーアウト表示されるため、
+// ここでは定休日（曜日）の案内と、受け取り方法ごとの注文締切の案内だけを表示する。
 function updateDateHint() {
   const deliveryType = getDeliveryType();
   const weekdayNames = ["日", "月", "火", "水", "木", "金", "土"];
-  let msg = "ご注文はご希望日の前日までにお願いいたします。";
 
-  if (deliveryType === "pickup") {
-    const closedWeekdayLabel = CONFIG.pickupClosedWeekdays.map((d) => `${weekdayNames[d]}曜日`).join("・");
-    if (closedWeekdayLabel) msg += ` 受け取り不可日：${closedWeekdayLabel}`;
-    if (CONFIG.pickupUnavailableDates.length > 0) {
-      msg += `${closedWeekdayLabel ? "、" : " 受け取り不可日："}${CONFIG.pickupUnavailableDates.join("、")}`;
-    }
-    dateHintEl.textContent = msg;
-    return;
-  }
+  const closedWeekdayLabel = CONFIG.pickupClosedWeekdays.map((d) => `${weekdayNames[d]}曜日`).join("・");
+  closedWeekdayHintEl.textContent = closedWeekdayLabel ? `定休日：${closedWeekdayLabel}` : "";
 
-  // 配送: 定休日・臨時休業日の翌日を配送休止日として表示する
-  const blockedWeekdayLabel = [...new Set(CONFIG.pickupClosedWeekdays.map((d) => (d + 1) % 7))]
-    .map((d) => `${weekdayNames[d]}曜日`)
-    .join("・");
-  const blockedDates = [
-    ...CONFIG.pickupUnavailableDates.map((d) => addDays(d, 1)),
-    ...CONFIG.shippingNoDispatchDates.map((d) => addDays(d, 1)),
-  ];
-  if (blockedWeekdayLabel) msg += ` 配送休止日：${blockedWeekdayLabel}`;
-  if (blockedDates.length > 0) {
-    msg += `${blockedWeekdayLabel ? "、" : " 配送休止日："}${blockedDates.join("、")}`;
-  }
-
-  dateHintEl.textContent = msg;
+  dateHintEl.textContent =
+    deliveryType === "pickup"
+      ? "ご注文は受け取りご希望時間の30分前までにお願いいたします。"
+      : "ご注文はご希望日前日の午前中までにお願いいたします。";
 }
 
 function validateDesiredDate() {
@@ -1254,15 +1241,16 @@ function handleCartLineClick(e) {
   }
 }
 
-function getMinSelectableDateStr() {
+function getMinSelectableDateStr(deliveryType) {
+  const days = deliveryType === "shipping" ? CONFIG.minDaysAheadShipping : CONFIG.minDaysAheadPickup;
   const min = new Date();
   min.setHours(0, 0, 0, 0);
-  min.setDate(min.getDate() + CONFIG.minDaysAhead);
+  min.setDate(min.getDate() + days);
   return formatLocalDate(min);
 }
 
 function setupCalendar() {
-  const minStr = getMinSelectableDateStr();
+  const minStr = getMinSelectableDateStr(getDeliveryType());
   const [y, m] = minStr.split("-").map(Number);
   calendarViewDate = new Date(y, m - 1, 1);
 
@@ -1309,8 +1297,8 @@ function renderCalendarMonth() {
 
   const startWeekday = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const minStr = getMinSelectableDateStr();
   const deliveryType = getDeliveryType();
+  const minStr = getMinSelectableDateStr(deliveryType);
 
   calendarGridEl.innerHTML = "";
 
@@ -1435,11 +1423,38 @@ function clearError() {
   formErrorEl.textContent = "";
 }
 
+// 注文送信時、締切（店頭受け取り＝希望時間の30分前まで／配送＝希望日前日の正午まで）を過ぎていないか判定する。
+// 問題なければnull、過ぎていればエラーメッセージを返す。注文の編集（お客様は不可、管理画面からのみ）には適用しない。
+function getOrderTimingCutoffMessage(payload) {
+  const now = new Date();
+
+  if (payload.deliveryType === "shipping") {
+    // 配送：着日の前日（発送日、必ず営業日）の正午まで
+    const prepDateStr = addDays(payload.desiredDate, -1);
+    const cutoff = new Date(`${prepDateStr}T12:00:00`);
+    if (now >= cutoff) {
+      return "大変申し訳ございません。配送のご注文は、ご希望日前日の正午（12:00）までにお願いしております。日付を選び直してください。";
+    }
+    return null;
+  }
+
+  const desired = new Date(`${payload.desiredDate}T${payload.desiredTime}:00`);
+  const cutoff = new Date(desired.getTime() - 30 * 60 * 1000);
+  if (now >= cutoff) {
+    return "大変申し訳ございません。店頭受け取りのご注文は、受け取り希望時間の30分前までにお願いしております。時間を選び直してください。";
+  }
+  return null;
+}
+
 function validate(payload) {
   if (!payload.customerName.trim()) return "お名前を入力してください。";
   if (!payload.customerTel.trim()) return "電話番号を入力してください。";
   if (!payload.desiredDate) return "ご希望日を選択してください。";
   if (!payload.desiredTime) return "ご希望時間を選択してください。";
+  if (!payload.orderId) {
+    const cutoffMessage = getOrderTimingCutoffMessage(payload);
+    if (cutoffMessage) return cutoffMessage;
+  }
   if (!isDateAvailable(payload.desiredDate, payload.deliveryType)) {
     return payload.deliveryType === "shipping"
       ? "選択された日付は配送を承っておりません。別の日付をお選びください。"

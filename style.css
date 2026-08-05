@@ -617,6 +617,8 @@ textarea {
   border: none;
   border-radius: 8px;
   cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .serving-add-btn:active,
