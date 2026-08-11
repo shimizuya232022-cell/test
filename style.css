@@ -826,6 +826,11 @@ textarea {
   font-size: 0.9rem;
 }
 
+.privacy-note {
+  text-align: center;
+  margin: 0 0 12px;
+}
+
 .submit-btn {
   display: block;
   width: 100%;
