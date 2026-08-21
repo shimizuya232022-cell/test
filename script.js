@@ -49,10 +49,11 @@ const CONFIG = {
   // クール便のお届け希望時間の選択肢（管理画面「クール便」タブで編集）
   shippingTimeSlots: ["午前中（8:00〜12:00）", "14:00〜16:00", "16:00〜18:00", "18:00〜20:00", "19:00〜21:00"],
 
-  // 配送時の送料（地方区分ごと。管理画面「クール便」タブで編集）
+  // 配送時の送料（地方区分ごと。管理画面「クール便」タブで編集）。
+  // お店掲示のヤマト運輸クール便料金表（2026-08-12反映）の金額。区分の切り方は下のPREFECTURE_REGIONを参照
   shippingFeeByRegion: {
-    "北海道": 1500, "東北": 900, "関東": 700, "中部": 700, "関西": 700,
-    "中国": 800, "四国": 800, "九州": 900, "沖縄": 1800,
+    "北海道": 1700, "東北（北部）": 1400, "東北（南部）": 1300, "関東・中部": 1300, "関西": 1400,
+    "中国": 1500, "四国": 1500, "九州": 1700, "沖縄": 1800,
   },
 };
 
@@ -82,18 +83,48 @@ let PRODUCTS = [
   { id: "p1785156431134227", name: "わかさぎ唐揚げ(ピリ辛)(ハーフ)", price: 550, availableFor: ["pickup", "shipping"] },
 ];
 
-// 都道府県 → 地方区分
+// 都道府県 → 地方区分（お店掲示のヤマト運輸クール便料金表・2026-08-12に合わせた区分。
+// 東北を北部/南部に分割し、三重県は関西ではなく「関東・中部」に含める点が標準的な地方区分と異なる）
 const PREFECTURE_REGION = {
   "北海道": "北海道",
-  "青森県": "東北", "岩手県": "東北", "宮城県": "東北", "秋田県": "東北", "山形県": "東北", "福島県": "東北",
-  "茨城県": "関東", "栃木県": "関東", "群馬県": "関東", "埼玉県": "関東", "千葉県": "関東", "東京都": "関東", "神奈川県": "関東",
-  "新潟県": "中部", "富山県": "中部", "石川県": "中部", "福井県": "中部", "山梨県": "中部", "長野県": "中部", "岐阜県": "中部", "静岡県": "中部", "愛知県": "中部",
-  "三重県": "関西", "滋賀県": "関西", "京都府": "関西", "大阪府": "関西", "兵庫県": "関西", "奈良県": "関西", "和歌山県": "関西",
+  "青森県": "東北（北部）", "岩手県": "東北（北部）", "秋田県": "東北（北部）",
+  "宮城県": "東北（南部）", "山形県": "東北（南部）", "福島県": "東北（南部）",
+  "茨城県": "関東・中部", "栃木県": "関東・中部", "群馬県": "関東・中部", "埼玉県": "関東・中部", "千葉県": "関東・中部", "東京都": "関東・中部", "神奈川県": "関東・中部",
+  "新潟県": "関東・中部", "富山県": "関東・中部", "石川県": "関東・中部", "福井県": "関東・中部", "山梨県": "関東・中部", "長野県": "関東・中部", "岐阜県": "関東・中部", "静岡県": "関東・中部", "愛知県": "関東・中部",
+  "三重県": "関東・中部",
+  "滋賀県": "関西", "京都府": "関西", "大阪府": "関西", "兵庫県": "関西", "奈良県": "関西", "和歌山県": "関西",
   "鳥取県": "中国", "島根県": "中国", "岡山県": "中国", "広島県": "中国", "山口県": "中国",
   "徳島県": "四国", "香川県": "四国", "愛媛県": "四国", "高知県": "四国",
   "福岡県": "九州", "佐賀県": "九州", "長崎県": "九州", "熊本県": "九州", "大分県": "九州", "宮崎県": "九州", "鹿児島県": "九州",
   "沖縄県": "沖縄",
 };
+
+// 都道府県 → 発送に必要な日数（お届け希望日の何日前までに発送する必要があるか）。
+// お店掲示のヤマト運輸クール便料金表（2026-08-12）に基づく。記載のない都道府県はDEFAULT_TRANSIT_DAYS（1日）
+const DEFAULT_TRANSIT_DAYS = 1;
+const PREFECTURE_TRANSIT_DAYS = {
+  "北海道": 2,
+  "福岡県": 2, "佐賀県": 2, "長崎県": 2, "熊本県": 2, "大分県": 2, "宮崎県": 2, "鹿児島県": 2,
+  "沖縄県": 3,
+};
+function getTransitDays(prefecture) {
+  return (prefecture && PREFECTURE_TRANSIT_DAYS[prefecture]) || DEFAULT_TRANSIT_DAYS;
+}
+
+// 午前中（8:00〜12:00）のお届けに対応していない都道府県一覧（クール便料金表の「PM2:00〜」表記の地域）。
+// この一覧の都道府県では、時間帯選択で「午前中」を選べないようにする
+const PM_ONLY_PREFECTURES = [
+  "北海道",
+  "青森県", "岩手県", "秋田県", "宮城県", "山形県", "福島県",
+  "和歌山県",
+  "鳥取県", "島根県", "岡山県", "広島県", "山口県",
+  "徳島県", "香川県", "愛媛県", "高知県",
+  "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県",
+  "沖縄県",
+];
+function isAmDeliveryAvailable(prefecture) {
+  return !prefecture || PM_ONLY_PREFECTURES.indexOf(prefecture) === -1;
+}
 
 // ============================================================
 
@@ -123,6 +154,10 @@ initCartState();
 
 // 選択中の受け取り日時における、上限商品の残数（商品ID: 残数）。未取得の商品は含まれない。
 let stockRemaining = {};
+
+// 直近にupdateTotal()で判定した配送先の都道府県（未計算はundefined、判定不可はnull）。
+// 住所欄への1文字入力ごとに都道府県が変わっていないか比較し、変わった時だけ在庫の再取得を行うために使う
+let lastKnownShippingPrefecture;
 
 function findProduct(productId) {
   return PRODUCTS.find((p) => p.id === productId);
@@ -514,6 +549,11 @@ function detectPrefecture(addressText) {
   return Object.keys(PREFECTURE_REGION).find((pref) => addressText.includes(pref)) || null;
 }
 
+// 現在入力中の配送先住所から発送日数を求める（住所未入力・判定不可の間はDEFAULT_TRANSIT_DAYSを使う）
+function currentShippingTransitDays() {
+  return getTransitDays(detectPrefecture(addressInput.value));
+}
+
 // 配送時の送料。都道府県が判定できない場合は null を返す
 function getShippingFee() {
   if (getDeliveryType() !== "shipping") return 0;
@@ -565,6 +605,21 @@ function populateShippingTimeOptions() {
     option.textContent = time;
     desiredTimeSlotEl.appendChild(option);
   });
+  updateShippingTimeSlotAvailability();
+}
+
+// 配送先の都道府県が「午前中お届け不可」地域の場合、時間帯プルダウンの「午前中」選択肢を無効化する。
+// 既に「午前中」を選択済みの状態で対象外の地域に変わった場合は選択を解除する（選び直しが必要になる）
+function updateShippingTimeSlotAvailability() {
+  const pref = detectPrefecture(addressInput.value);
+  const amAvailable = isAmDeliveryAvailable(pref);
+  Array.from(desiredTimeSlotEl.options).forEach((opt) => {
+    if (!opt.value || opt.value.indexOf("午前中") === -1) return;
+    opt.disabled = !amAvailable;
+    if (!amAvailable && desiredTimeSlotEl.value === opt.value) {
+      desiredTimeSlotEl.value = "";
+    }
+  });
 }
 
 // YYYY-MM-DD 形式に変換（ローカル日付のまま。toISOString はUTC変換で日付がずれるため使わない）
@@ -582,11 +637,11 @@ function addDays(dateStr, days) {
 }
 
 // 指定した日付がその受け取り方法で選択可能かどうか
-// 定休日・臨時休業は店頭受け取り・配送で共有する設定。配送は発送日（着日の前日）がこれに該当するかで判定する
+// 定休日・臨時休業は店頭受け取り・配送で共有する設定。配送は発送日（着日の何日前かは配送先地域による）がこれに該当するかで判定する
 function isDateAvailable(dateStr, deliveryType) {
   if (!dateStr) return true; // 未入力は別途必須チェックで扱う
 
-  const targetDate = deliveryType === "pickup" ? dateStr : addDays(dateStr, -1);
+  const targetDate = deliveryType === "pickup" ? dateStr : addDays(dateStr, -currentShippingTransitDays());
   const weekday = new Date(`${targetDate}T00:00:00`).getDay();
   const isSpecialOpen = CONFIG.specialOpenDates.includes(targetDate);
   if (!isSpecialOpen && CONFIG.pickupClosedWeekdays.includes(weekday)) return false;
@@ -598,7 +653,7 @@ function isDateAvailable(dateStr, deliveryType) {
 
 // その日付が「通常は定休日/臨時休業だが特別営業により利用可能」になっているか
 function isSpecialOpenOverride(dateStr, deliveryType) {
-  const targetDate = deliveryType === "pickup" ? dateStr : addDays(dateStr, -1);
+  const targetDate = deliveryType === "pickup" ? dateStr : addDays(dateStr, -currentShippingTransitDays());
   if (!CONFIG.specialOpenDates.includes(targetDate)) return false;
   const weekday = new Date(`${targetDate}T00:00:00`).getDay();
   return CONFIG.pickupClosedWeekdays.includes(weekday);
@@ -613,10 +668,15 @@ function updateDateHint() {
   const closedWeekdayLabel = CONFIG.pickupClosedWeekdays.map((d) => `${weekdayNames[d]}曜日`).join("・");
   closedWeekdayHintEl.textContent = closedWeekdayLabel ? `定休日：${closedWeekdayLabel}` : "";
 
-  dateHintEl.textContent =
-    deliveryType === "pickup"
-      ? "ご注文は受け取りご希望時間の30分前までにお願いいたします。"
-      : "ご注文はご希望日前日の午前中までにお願いいたします。";
+  if (deliveryType === "pickup") {
+    dateHintEl.textContent = "ご注文は受け取りご希望時間の30分前までにお願いいたします。";
+  } else {
+    const days = currentShippingTransitDays();
+    dateHintEl.textContent =
+      days > 1
+        ? `ご注文はご希望日の${days}日前の正午までにお願いいたします（お届け先地域によりお日にちをいただいております）。`
+        : "ご注文はご希望日前日の正午までにお願いいたします。";
+  }
 }
 
 function validateDesiredDate() {
@@ -1158,7 +1218,7 @@ async function fetchStockAvailability() {
     return;
   }
 
-  const prepDate = getDeliveryType() === "shipping" ? addDays(date, -1) : date;
+  const prepDate = getDeliveryType() === "shipping" ? addDays(date, -currentShippingTransitDays()) : date;
 
   if (!CONFIG.gasEndpoint || CONFIG.gasEndpoint === "GAS_WEB_APP_URL_HERE") {
     stockRemaining = {};
@@ -1196,6 +1256,22 @@ function updateTotal() {
   if (deliveryType === "shipping") {
     shippingFeeAmountEl.textContent =
       shippingFee === null ? "住所入力後に確定" : `¥${shippingFee.toLocaleString()}`;
+  }
+
+  // 配送先の都道府県によって選べる日付・時間帯が変わるため、住所が変わるたびに反映し直す
+  // （updateTotalは住所欄の1文字入力ごとにも呼ばれるため、都道府県の判定結果が実際に
+  // 変わった時だけ、サーバー問い合わせを伴う在庫再取得を行う）
+  if (deliveryType === "shipping") {
+    updateShippingTimeSlotAvailability();
+    updateDateHint();
+    if (!calendarPopupEl.classList.contains("hidden")) {
+      renderCalendarMonth();
+    }
+    const pref = detectPrefecture(addressInput.value);
+    if (pref !== lastKnownShippingPrefecture) {
+      lastKnownShippingPrefecture = pref;
+      if (desiredDateInput.value) fetchStockAvailability();
+    }
   }
 
   const total = subtotal + (shippingFee || 0);
@@ -1244,7 +1320,11 @@ function handleCartLineClick(e) {
 }
 
 function getMinSelectableDateStr(deliveryType) {
-  const days = deliveryType === "shipping" ? CONFIG.minDaysAheadShipping : CONFIG.minDaysAheadPickup;
+  // 配送は「発送に最低○日必要」という設定（CONFIG.minDaysAheadShipping）と、
+  // 配送先地域の発送日数（遠方は2〜3日）のうち大きい方を最短選択可能日とする
+  const days = deliveryType === "shipping"
+    ? Math.max(CONFIG.minDaysAheadShipping, currentShippingTransitDays())
+    : CONFIG.minDaysAheadPickup;
   const min = new Date();
   min.setHours(0, 0, 0, 0);
   min.setDate(min.getDate() + days);
@@ -1431,11 +1511,12 @@ function getOrderTimingCutoffMessage(payload) {
   const now = new Date();
 
   if (payload.deliveryType === "shipping") {
-    // 配送：着日の前日（発送日、必ず営業日）の正午まで
-    const prepDateStr = addDays(payload.desiredDate, -1);
+    // 配送：発送日（お届け先地域によって着日の1〜3日前）の正午まで
+    const transitDays = getTransitDays(detectPrefecture(payload.address || ""));
+    const prepDateStr = addDays(payload.desiredDate, -transitDays);
     const cutoff = new Date(`${prepDateStr}T12:00:00`);
     if (now >= cutoff) {
-      return "大変申し訳ございません。配送のご注文は、ご希望日前日の正午（12:00）までにお願いしております。日付を選び直してください。";
+      return "大変申し訳ございません。配送のご注文は、発送日（お届け先地域によって異なります）の正午（12:00）までにお願いしております。日付を選び直してください。";
     }
     return null;
   }
